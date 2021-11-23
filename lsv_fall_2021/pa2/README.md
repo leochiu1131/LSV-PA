@@ -21,9 +21,8 @@ PO <po3-name> support partition: 1
 ```
 Print lines of `PO <po-name>...` according to the order of `AbcNtkForEachPo()`.
 For each PO, use `AbcNtkCreateCone()` to extract the cone of the PO and its support set. 
-In each line of `PO <po-name> support partition:`, print the names  of POs  returned  by  function `AbcObjName()`.  
-Print  `0`  after  `support partition: ` if there is no valid non-trivial partition; 
-print `1` if ther is a valid non-trivial partition, and print the partition you find in the next line.
+In each line of `PO <po-name> support partition:`, print the names  of POs  returned  by  function `AbcObjName()`. Print  `0`  after  `support partition: ` if there is no valid non-trivial partition; 
+print `1` if there is a valid non-trivial partition, and print the partition you find in the next line.
 
 We use an integer string to represent the variable partition. 
 Let `0` represents `x ∈ XC`,  `1`  represents `x ∈ XB`,  `2`  represents `x ∈ XA`.  
