@@ -7,8 +7,7 @@ Please develop your code under `src/ext-lsv`. (For those who develop your PA1 in
 ### Or-Bi-Decomposition of Functions
 Write a procedure in ABC that decides whether each circuit PO `f(X)` is or-bi-decomposable. 
 Integrate this procedure into ABC, so that after reading in a circuit by the command `read`, running the command `lsv_or_bidec` would invoke your code.
-A function `f(X)` is or-decomposable under a variable partition of its support `X = { XA | XB | XC }` if `f` can be written as `f(X)=fA(XA,XC)+fB(XB,XC)`
-Your goal is to find a non-trivial variable partition such that `f` is or-bi-decomposable under this variable partition. 
+A function `f(X)` is or-decomposable under a variable partition of its support `X = { XA | XB | XC }` if `f` can be written as `f(X)=fA(XA,XC)+fB(XB,XC)`. Your goal is to find a non-trivial variable partition such that `f` is or-bi-decomposable under this variable partition. 
 You can refer to [README.pdf](./README.pdf) or [the paper](https://ieeexplore.ieee.org/document/4555896) for further details. 
 
 The format of your printing message is as follows.
@@ -21,7 +20,7 @@ PO <po3-name> support partition: 1
 ```
 Print lines of `PO <po-name>...` according to the order of `AbcNtkForEachPo()`.
 For each PO, use `AbcNtkCreateCone()` to extract the cone of the PO and its support set. 
-In each line of `PO <po-name> support partition:`, print the names  of POs  returned  by  function `AbcObjName()`. Print  `0`  after  `support partition: ` if there is no valid non-trivial partition; 
+In each line of `PO <po-name> support partition:`, print the names  of POs  returned  by  function `AbcObjName()`. Print  `0`  after  `support partition:` if there is no valid non-trivial partition; 
 print `1` if there is a valid non-trivial partition, and print the partition you find in the next line.
 
 We use an integer string to represent the variable partition. 

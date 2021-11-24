@@ -41,8 +41,8 @@ Submission period:
 - Parts 1 and 2: 2021/10/08 11:00-13:00 
 - Part 3: 2021/10/22 11:00-13:00 
 
-### PA2
-Topic: TBD  
+### [PA2](./lsv_fall_2021/pa2/README.md)
+Topic: Or-Bi-Decomposition of Functions 
 
 Submission period: TBD 
 
