@@ -1,7 +1,7 @@
 ## Programming Assignment 2 
 
 ### Submission Guidelines
-Please send a pull request to the branch named with your student ID during the submission periods: 2021/12/?? 11:00-13:00.  
+Please send a pull request to the branch named with your student ID during the submission periods: 2021/12/24 11:00-13:00.  
 Please develop your code under `src/ext-lsv`. (For those who develop your PA1 in `ext_<your_student_ID>`, please move your code to `src/ext-lsv` and remove `ext_<your_student_ID>`.
 
 ### Or-Bi-Decomposition of Functions
