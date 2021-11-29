@@ -42,7 +42,7 @@ Submission period:
 - Part 3: 2021/10/22 11:00-13:00 
 
 ### [PA2](./lsv_fall_2021/pa2/README.md)
-Topic: Or-Bi-Decomposition of Functions 
+Topic: OR Bi-Decomposition of Functions 
 
 Submission period: 2021/12/24 11:00-13:00 
 
