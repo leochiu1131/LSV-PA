@@ -4,10 +4,10 @@
 Please send a pull request to the branch named with your student ID during the submission periods: 2021/12/24 11:00-13:00.  
 Please develop your code under `src/ext-lsv`. (For those who develop your PA1 in `ext_<your_student_ID>`, please move your code to `src/ext-lsv` and remove `ext_<your_student_ID>`.
 
-### Or-Bi-Decomposition of Functions
-Write a procedure in ABC that decides whether each circuit PO `f(X)` is or-bi-decomposable. 
+### OR Bi-Decomposition of Functions
+Write a procedure in ABC that decides whether each circuit PO `f(X)` is OR bi-decomposable. 
 Integrate this procedure into ABC, so that after reading in a circuit by the command `read`, running the command `lsv_or_bidec` would invoke your code.
-A function `f(X)` is or-decomposable under a variable partition of its support `X = { XA | XB | XC }` if `f` can be written as `f(X)=fA(XA,XC)+fB(XB,XC)`. Your goal is to find a non-trivial variable partition such that `f` is or-bi-decomposable under this variable partition. 
+A function `f(X)` is OR bi-decomposable under a variable partition of its support `X = { XA | XB | XC }` if `f` can be written as `f(X)=fA(XA,XC)+fB(XB,XC)`. Your goal is to find a non-trivial variable partition such that `f` is OR bi-decomposable under this variable partition. 
 You can refer to [README.pdf](./README.pdf) or [the paper](https://ieeexplore.ieee.org/document/4555896) for further details. 
 
 The format of your printing message is as follows.
