@@ -37,6 +37,10 @@ grade_one_branch () {
         src/proof/fra/*.o src/proof/fra/*.d \
         src/base/abci/*.o src/base/abci/*.d
     make -j8
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Compilation failed!"
+        exit 1
+    fi
     echo "Benchmark,Result" > "${result}"
     rm -rf "${out_dir}" "${ref_dir}"
     mkdir -p "${out_dir}"
