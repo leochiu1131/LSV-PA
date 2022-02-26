@@ -10,7 +10,7 @@ fi
 time_limit="60s"
 pa_cmd="lsv_or_bidec"
 checker_cmd="lsv_pa2_checker"
-pa_dir="lsv_fall_2021/pa2"
+pa_dir="lsv/pa2"
 ref_dir="${pa_dir}/ref"
 out_dir="${pa_dir}/out"
 refprog="./abc.$2"
@@ -24,7 +24,7 @@ bench_list=("${bench_dir}/random_control/arbiter.aig"
             "${bench_dir}/random_control/priority.aig"
             "${bench_dir}/random_control/router.aig"
             "${bench_dir}/arithmetic/bar.aig")
-students=( $(cut -d, -f1 < lsv_fall_2021/admin/participants-id.csv | tail -n +3) )
+students=( $(cut -d, -f1 < lsv/admin/participants-id.csv | tail -n +3) )
 
 
 grade_one_branch () {

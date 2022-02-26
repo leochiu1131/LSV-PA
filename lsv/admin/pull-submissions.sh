@@ -1,6 +1,6 @@
 #!/bin/bash
 git fetch
-students=( $(cut -d, -f1 < lsv_fall_2021/admin/participants-id.csv | tail -n +3) )
+students=( $(cut -d, -f1 < lsv/admin/participants-id.csv | tail -n +3) )
 for student in "${students[@]}"; do
     echo "Pulling submission of ${student} ..."
     git switch "${student}"

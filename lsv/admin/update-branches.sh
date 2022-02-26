@@ -1,5 +1,5 @@
 #!/bin/bash
-students=( $(cut -d, -f1 < lsv_fall_2021/admin/participants-id.csv | tail -n +3) )
+students=( $(cut -d, -f1 < lsv/admin/participants-id.csv | tail -n +3) )
 for student in "${students[@]}"; do
     echo "Updating branch ${student} ..."
     git switch "${student}"

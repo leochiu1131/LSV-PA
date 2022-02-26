@@ -30,18 +30,18 @@ The detailed steps are documented [here](./private-fork.md).
 ### PA0
 Topic: Getting familiar with git and GitHub
 
-Task: Fill in your GitHub Account in this [table](./lsv_fall_2021/admin/participants-id.csv) via a pull request to the **master** branch.
+Task: Fill in your GitHub Account in this [table](./lsv/admin/participants-id.csv) via a pull request to the **master** branch.
 
 Deadline: 2021/10/04 
 
-### [PA1](./lsv_fall_2021/pa1/README.md)
+### [PA1](./lsv/pa1/README.md)
 Topic: Finding maximum single-fanout cones (MSFCs)
 
 Submission period:
 - Parts 1 and 2: 2021/10/08 11:00-13:00 
 - Part 3: 2021/10/22 11:00-13:00 
 
-### [PA2](./lsv_fall_2021/pa2/README.md)
+### [PA2](./lsv/pa2/README.md)
 Topic: OR Bi-Decomposition of Functions 
 
 Submission period: 2021/12/24 11:00-13:00 
@@ -57,7 +57,7 @@ You can clone the benchmarks from this [repository](https://github.com/lsils/ben
 ```
 
 ## Participants
-We recommend students to register their student IDs and GitHub accounts in this [table](./lsv_fall_2021/admin/participants-id.csv).
+We recommend students to register their student IDs and GitHub accounts in this [table](./lsv/admin/participants-id.csv).
 
 ## Contact
 TA: Yun-Rong Luo (r10943108@ntu.edu.tw)
