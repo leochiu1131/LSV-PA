@@ -2,7 +2,7 @@
 
 ### Submission Guidelines
 Please send a pull request to the branch named with your student ID during the submission periods (see below).  
-For Parts 1 and 2, please put the required items under `lsv_fall_2021/pa1`, i.e., this folder.  
+For Parts 1 and 2, please put the required items under `lsv/pa1`, i.e., this folder.  
 For Part 3, please develop your code under `src/ext-lsv`.
 
 #### Submission Periods
