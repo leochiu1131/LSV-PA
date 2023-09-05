@@ -6,13 +6,13 @@ ReleaseLib/
 ReleaseExe/
 ReleaseExt/
 
+_/
 _TEST/
 lib/abc*
 lib/m114*
 lib/bip*
 docs/
-benchmarks
-
+.vscode/
 
 src/xxx/
 src/aig/au/

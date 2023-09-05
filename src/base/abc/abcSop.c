@@ -907,6 +907,43 @@ int Abc_SopCheck( char * pSop, int nFanins )
     return 1;
 }
 
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_SopCheckReadTruth( Vec_Ptr_t * vRes, char * pToken, int fHex )
+{
+    char * pBase; int nVars;
+    int Log2 = Abc_Base2Log( strlen(pToken) );
+    if ( fHex && strlen(pToken) == 1 )
+        Log2 = 0;     
+    if ( (1 << Log2) != (int)strlen(pToken) )
+    {
+        printf( "The truth table length (%d) is not power-of-2.\n", (int)strlen(pToken) );
+        Vec_PtrFreeData( vRes );
+        Vec_PtrShrink( vRes, 0 );
+        return 0;
+    }
+    if ( Vec_PtrSize(vRes) == 0 )
+        return 1;
+    pBase = (char *)Vec_PtrEntry( vRes, 0 );
+    nVars = Abc_SopGetVarNum( pBase );
+    if ( nVars != Log2+2*fHex )
+    {
+        printf( "Truth table #1 has %d vars while truth table #%d has %d vars.\n", nVars, Vec_PtrSize(vRes)+1, Log2+2*fHex );
+        Vec_PtrFreeData( vRes );
+        Vec_PtrShrink( vRes, 0 );
+        return 0;
+    }   
+    return 1;
+}
 
 /**Function*************************************************************
 
@@ -949,32 +986,59 @@ char * Abc_SopFromTruthBin( char * pTruth )
         if ( Digit == 1 )
             Vec_IntPush( vMints, nTruthSize - 1 - i );
     }
+/*    
     if ( Vec_IntSize( vMints ) == 0 || Vec_IntSize( vMints ) == nTruthSize )
     {
         Vec_IntFree( vMints );
         printf( "Cannot create constant function.\n" );
         return NULL;
     }
-
-    // create the SOP representation of the minterms
-    Length = Vec_IntSize(vMints) * (nVars + 3);
-    pSopCover = ABC_ALLOC( char, Length + 1 );
-    pSopCover[Length] = 0;
-    Vec_IntForEachEntry( vMints, Mint, i )
+*/
+    if ( Vec_IntSize(vMints) == 0 || Vec_IntSize(vMints) == (1 << nVars) )
     {
-        pCube = pSopCover + i * (nVars + 3);
-        for ( b = 0; b < nVars; b++ )
-            if ( Mint & (1 << (nVars-1-b)) )
-//            if ( Mint & (1 << b) )
-                pCube[b] = '1';
-            else
-                pCube[b] = '0';
-        pCube[nVars + 0] = ' ';
-        pCube[nVars + 1] = '1';
-        pCube[nVars + 2] = '\n';
+        pSopCover = ABC_ALLOC( char, 4 );
+        pSopCover[0] = ' ';
+        pSopCover[1] = '0' + (Vec_IntSize(vMints) > 0);
+        pSopCover[2] = '\n';                        
+        pSopCover[3] = 0;
+    }
+    else
+    {
+        // create the SOP representation of the minterms
+        Length = Vec_IntSize(vMints) * (nVars + 3);
+        pSopCover = ABC_ALLOC( char, Length + 1 );
+        pSopCover[Length] = 0;
+        Vec_IntForEachEntry( vMints, Mint, i )
+        {
+            pCube = pSopCover + i * (nVars + 3);
+            for ( b = 0; b < nVars; b++ )
+    //            if ( Mint & (1 << (nVars-1-b)) )
+                if ( Mint & (1 << b) )
+                    pCube[b] = '1';
+                else
+                    pCube[b] = '0';
+            pCube[nVars + 0] = ' ';
+            pCube[nVars + 1] = '1';
+            pCube[nVars + 2] = '\n';
+        }
     }
     Vec_IntFree( vMints );
     return pSopCover;
+}
+Vec_Ptr_t * Abc_SopFromTruthsBin( char * pTruth )
+{
+    Vec_Ptr_t * vRes = Vec_PtrAlloc( 10 );
+    char * pCopy = Abc_UtilStrsav(pTruth);
+    char * pToken = strtok( pCopy, " \r\n\t|" );
+    while ( pToken )
+    {
+        if ( !Abc_SopCheckReadTruth( vRes, pToken, 0 ) )
+            break;
+        Vec_PtrPush( vRes, Abc_SopFromTruthBin(pToken) );
+        pToken = strtok( NULL, " \r\n\t|" );
+    }
+    ABC_FREE( pCopy );    
+    return vRes;
 }
 
 /**Function*************************************************************
@@ -1024,39 +1088,51 @@ char * Abc_SopFromTruthHex( char * pTruth )
     }
 
     // create the SOP representation of the minterms
-    Length = Vec_IntSize(vMints) * (nVars + 3);
-    pSopCover = ABC_ALLOC( char, Length + 1 );
-    pSopCover[Length] = 0;
-    Vec_IntForEachEntry( vMints, Mint, i )
+    if ( Vec_IntSize(vMints) == 0 || Vec_IntSize(vMints) == (1 << nVars) )
     {
-        pCube = pSopCover + i * (nVars + 3);
-        for ( b = 0; b < nVars; b++ )
-//            if ( Mint & (1 << (nVars-1-b)) )
-            if ( Mint & (1 << b) )
-                pCube[b] = '1';
-            else
-                pCube[b] = '0';
-        pCube[nVars + 0] = ' ';
-        pCube[nVars + 1] = '1';
-        pCube[nVars + 2] = '\n';
+        pSopCover = ABC_ALLOC( char, 4 );
+        pSopCover[0] = ' ';
+        pSopCover[1] = '0' + (Vec_IntSize(vMints) > 0);
+        pSopCover[2] = '\n';                        
+        pSopCover[3] = 0;
     }
-/*
-    // create TT representation
+    else
     {
-        extern void Bdc_ManDecomposeTest( unsigned uTruth, int nVars );
-        unsigned uTruth = 0;
-        int nVarsAll = 4;
-        assert( nVarsAll == 4 );
-        assert( nVars <= nVarsAll );
+        Length = Vec_IntSize(vMints) * (nVars + 3);
+        pSopCover = ABC_ALLOC( char, Length + 1 );
+        pSopCover[Length] = 0;
         Vec_IntForEachEntry( vMints, Mint, i )
-            uTruth |= (1 << Mint);
-//        uTruth = uTruth | (uTruth << 8) | (uTruth << 16) | (uTruth << 24);
-        uTruth = uTruth | (uTruth << 16);
-        Bdc_ManDecomposeTest( uTruth, nVarsAll );
+        {
+            pCube = pSopCover + i * (nVars + 3);
+            for ( b = 0; b < nVars; b++ )
+    //            if ( Mint & (1 << (nVars-1-b)) )
+                if ( Mint & (1 << b) )
+                    pCube[b] = '1';
+                else
+                    pCube[b] = '0';
+            pCube[nVars + 0] = ' ';
+            pCube[nVars + 1] = '1';
+            pCube[nVars + 2] = '\n';
+        }
     }
-*/
+
     Vec_IntFree( vMints );
     return pSopCover;
+}
+Vec_Ptr_t * Abc_SopFromTruthsHex( char * pTruth )
+{
+    Vec_Ptr_t * vRes = Vec_PtrAlloc( 10 );
+    char * pCopy = Abc_UtilStrsav(pTruth);
+    char * pToken = strtok( pCopy, " \r\n\t|" );
+    while ( pToken )
+    {
+        if ( !Abc_SopCheckReadTruth( vRes, pToken, 1 ) )
+            break;
+        Vec_PtrPush( vRes, Abc_SopFromTruthHex(pToken) );
+        pToken = strtok( NULL, " \r\n\t|" );
+    }
+    ABC_FREE( pCopy );
+    return vRes;
 }
 
 /**Function*************************************************************
