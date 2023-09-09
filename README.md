@@ -28,7 +28,10 @@ The detailed steps are documented [here](./private-fork.md).
 We recommend students to register their student IDs and GitHub accounts in this [table](./lsv/admin/participants-id.csv).
 
 ## Assignments
-To be announced.
+### [PA1](./lsv/pa1/README.md): Functional simulation   
+Submission deadline:
+- Exercises 1-3: 2023/09/17 23:59
+- Exercises 4: 2023/10/01 23:59
 
 ## Contact
 TA: Tian-Fu Chen (d11k42001@ntu.edu.tw)
