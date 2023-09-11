@@ -1,0 +1,8 @@
+.model basic
+.inputs A B C D
+.outputs Z
+.names A B C D Z
+0001 1
+1111 1
+1000 1
+.end
