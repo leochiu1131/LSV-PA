@@ -1,0 +1,6 @@
+source -s abc.rc
+read full_adder.blif 
+print_status
+print_stats
+show
+strash

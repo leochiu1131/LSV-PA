@@ -1,0 +1,24 @@
+.model mul
+.inputs a1 a0 b1 b0
+.outputs y3 y2 y1 y0
+.subckt half_adder a=x0 b=x1 s=y1 cout=c0
+.subckt half_adder a=c0 b=x2 s=y2 cout=y3
+.names a0 b0 y0
+11 1
+.names a0 b1 x0
+11 1
+.names a1 b0 x1
+11 1
+.names a1 b1 x2
+11 1
+.end
+
+.model half_adder
+.inputs a b
+.outputs s cout
+.names a b s
+10 1
+01 1
+.names a b cout
+11 1
+.end
