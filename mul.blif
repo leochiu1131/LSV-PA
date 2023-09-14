@@ -1,0 +1,19 @@
+.model 2bit_unsigned_multiplier
+.inputs a1 a0 b1 b0
+.outputs y3 y2 y1 y0
+.names a1 a0 b1 b0 y0 #odd number
+-1-1 1
+.names a1 a0 b1 b0 y1 #2,3,6,7
+0110 1
+1001 1
+0111 1
+1101 1
+1011 1
+1110 1
+.names a1 a0 b1 b0 y2 #4~7, 2*2,2*3,3*2
+1010 1
+1011 1
+1110 1
+.names a1 a0 b1 b0 y3 #>=8, only 3*3
+1111 1
+.end
