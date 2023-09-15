@@ -1,6 +1,7 @@
+strash
+collapse
+show_bdd -g
+read full_adder.blif
 source -s abc.rc
 read full_adder.blif 
-print_status
-print_stats
 show
-strash
