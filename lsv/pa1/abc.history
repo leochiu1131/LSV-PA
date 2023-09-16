@@ -1,0 +1,11 @@
+read ser_adder.blif 
+read mul.
+show_bdd
+show_bdd -g
+collapse
+strash
+print_stats
+read mul.blif 
+show
+source -s abc.rc
+read mul.blif
