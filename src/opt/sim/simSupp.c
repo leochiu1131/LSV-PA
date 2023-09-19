@@ -33,7 +33,7 @@ static int    Sim_ComputeSuppRound( Sim_Man_t * p, int  fUseTargets );
 static int    Sim_ComputeSuppRoundNode( Sim_Man_t * p, int iNumCi, int  fUseTargets );
 static void   Sim_ComputeSuppSetTargets( Sim_Man_t * p );
 
-static void   Sim_UtilAssignRandom( Sim_Man_t * p );
+// static void   Sim_UtilAssignRandom( Sim_Man_t * p );
 static void   Sim_UtilAssignFromFifo( Sim_Man_t * p );
 static void   Sim_SolveTargetsUsingSat( Sim_Man_t * p, int nCounters );
 static int    Sim_SolveSuppModelVerify( Abc_Ntk_t * pNtk, int * pModel, int Input, int Output );

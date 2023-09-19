@@ -173,7 +173,8 @@ Sim_Man_t * Sim_ManStart( Abc_Ntk_t * pNtk, int fLightweight )
     p->nInputs    = Abc_NtkCiNum(p->pNtk);
     p->nOutputs   = Abc_NtkCoNum(p->pNtk);
     // internal simulation information
-    p->nSimBits   = 2048;
+    // p->nSimBits   = 2048;
+    p->nSimBits   = 32;
     p->nSimWords  = SIM_NUM_WORDS(p->nSimBits);
     p->vSim0      = Sim_UtilInfoAlloc( Abc_NtkObjNumMax(pNtk), p->nSimWords, 0 );
     p->fLightweight = fLightweight;
