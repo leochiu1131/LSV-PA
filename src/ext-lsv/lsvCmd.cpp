@@ -180,6 +180,11 @@ void Lsv_NtkSimBdd(Abc_Ntk_t *pNtk, const char *pattern) {
     int comp;
     DdNode *ptr;
 
+    if (strlen(pattern) != Abc_NtkPiNum(pNtk)) {
+        printf("Inconsistent input size %d vs %d\n", strlen(pattern), Abc_NtkPiNum(pNtk));
+        return;
+    }
+
     std::unordered_map<std::string, int> map;
     Abc_NtkForEachPi(pNtk, pNode, i) {
         map[Abc_ObjName(pNode)] = pattern[i] == '1';
@@ -222,7 +227,8 @@ void Lsv_NtkSimBdd(Abc_Ntk_t *pNtk, const char *pattern) {
 int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv) {
     Abc_Ntk_t *pNtk = Abc_FrameReadNtk(pAbc);
     Abc_Obj_t *pObj;
-    int c;
+    int c, nArgc;
+    char **nArgv;
     // set defaults
     Extra_UtilGetoptReset();
     while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
@@ -232,6 +238,13 @@ int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv) {
         default:
             goto usage;
         }
+    }
+
+    nArgc = argc - globalUtilOptind;
+    nArgv = argv + globalUtilOptind;
+
+    if (nArgc != 1) {
+        goto usage;
     }
 
     if (pNtk == NULL) {
@@ -244,11 +257,11 @@ int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv) {
         return 1;
 	}
 
-    Lsv_NtkSimBdd(pNtk, argv[1]);
+    Lsv_NtkSimBdd(pNtk, nArgv[0]);
 
 	return 0;
 usage:
-    Abc_Print(-2, "usage: lsv_sim_bdd [-gh] <input pattern>\n");
+    Abc_Print(-2, "usage: lsv_sim_bdd [-h] <input pattern>\n");
     Abc_Print(-2, "\t        simulation using bdd\n");
     Abc_Print(-2, "\t-h    : print the command usage\n");
     return 1;
