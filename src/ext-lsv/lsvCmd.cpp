@@ -6,6 +6,7 @@
 
 #include <unordered_map>
 #include <fstream>
+#include <vector>
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimulateBDD(Abc_Frame_t *pAbc, int argc, char **argv);
@@ -71,7 +72,7 @@ usage:
 void Lsv_NtkSimulateBdd(Abc_Ntk_t *pNtk, char *inputPattern) {
   int i;
   Abc_Obj_t *pNode;
-  std::unordered_map <char *, bool> PIname2Value;
+  std::unordered_map <std::string, bool> PIname2Value;
   DdManager *dd = ( DdManager * ) pNtk->pManFunc;
   if ( !Abc_NtkIsBddLogic(pNtk) )
   {
@@ -150,43 +151,126 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
     return;
   }
 
-  std::string line;
-  int simulationCount = 0;
-  while ( std::getline(infile, line) ) {
-    ++simulationCount;
-  }
-  infile.close();
-
-  int varCount = line.size();
-  int intCount = simulationCount / 32 + 1;
-  unsigned int **simulationInt = new unsigned int *[intCount];
-  for ( int i = 0; i < intCount; ++i ) {
-    simulationInt[i] = new unsigned int[varCount];
-    for ( int v = 0; v < varCount; ++v ) {
-      simulationInt[i][v] = 0;
-    }
-  }
-
-  infile.open(inputFileName);
-  while ( std::getline(infile, line) ) {
-    for ( int v = 0; v < varCount; ++v ) {
-      ( simulationInt[0][v] ) <<= 1;
-      simulationInt[0][v] += ( line[v] == '0' ) ? 0 : 1;
-    }
-  }
-  infile.close();
+  const unsigned int mask = 4294967295;
 
   int i;
   Abc_Obj_t *pNode;
-  Abc_NtkForEachNode(pNtk, pNode, i) {  // * topological order
-    // printf("%s\n", Abc_ObjName(pNode));
-    Abc_AigPrintNode(pNode);
+  std::string line;
+  int simulationCount = 0;
+  // int PICount = Abc_NtkPiNum(pNtk);
+  // int POCount = Abc_NtkPoNum(pNtk);
+  std::unordered_map<std::string, unsigned int> NodeName2val;
+  std::unordered_map<std::string, std::string> POName2val;
+
+  Abc_NtkForEachPi(pNtk, pNode, i) {
+    NodeName2val[Abc_ObjName(pNode)] = 0;
+  }
+  Abc_NtkForEachPo(pNtk, pNode, i) {
+    POName2val[Abc_ObjName(pNode)] = "";
   }
 
-  for ( int i = 0; i < intCount; ++i ) {
-    delete[] simulationInt[i];
+  while ( std::getline(infile, line) ) {
+    ++simulationCount;
+    Abc_NtkForEachPi(pNtk, pNode, i) {
+      ( NodeName2val[Abc_ObjName(pNode)] ) <<= 1;
+      NodeName2val[Abc_ObjName(pNode)] += ( line[i] == '0' ) ? 0 : 1;
+    }
+    if ( simulationCount == 32 ) {
+      // do simulation
+      // Abc_NtkForEachPi(pNtk, pNode, i) {
+      //   printf("%s : ", Abc_ObjName(pNode));
+      //   for ( int b = simulationCount - 1; b >= 0; --b ) {
+      //     printf("%d", ( NodeName2val[Abc_ObjName(pNode)] >> b ) % 2);
+      //   }
+      //   printf("\n");
+      // }
+      Abc_NtkForEachNode(pNtk, pNode, i) {  // * topological order
+        Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
+        unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+        unsigned int child1 = NodeName2val[Abc_ObjName(Abc_ObjFanin1(pNodeR))];
+        if ( Abc_ObjFaninC0(pNodeR) ) {
+          child0 ^= mask;
+        }
+        if ( Abc_ObjFaninC1(pNodeR) ) {
+          child1 ^= mask;
+        }
+        unsigned int parent = child0 & child1;
+        NodeName2val[Abc_ObjName(pNodeR)] = parent;
+        // printf("%s : ", Abc_ObjName(pNodeR));
+        // for ( int b = simulationCount - 1; b >= 0; --b ) {
+        //   printf("%d", ( parent >> b ) % 2);
+        // }
+        // printf("\n");
+      }
+      Abc_NtkForEachPo(pNtk, pNode, i) {
+        Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
+        unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+        if ( Abc_ObjFaninC0(pNodeR) ) {
+          child0 ^= mask;
+        }
+        // printf("%s : ", Abc_ObjName(pNodeR));
+        // for ( int b = simulationCount - 1; b >= 0; --b ) {
+        //   printf("%d", ( child0 >> b ) % 2);
+        // }
+        // printf("\n");
+        for ( int b = simulationCount - 1; b >= 0; --b ) {
+          POName2val[Abc_ObjName(pNodeR)] += ( char ) ( ( child0 >> b ) % 2 + 48 );
+        }
+      }
+      simulationCount = 0;
+    }
   }
-  delete[] simulationInt;
+  infile.close();
+
+  // do simulation
+  if ( simulationCount > 0 ) {
+    // Abc_NtkForEachPi(pNtk, pNode, i) {
+    //   printf("%s : ", Abc_ObjName(pNode));
+    //   for ( int b = simulationCount - 1; b >= 0; --b ) {
+    //     printf("%d", ( NodeName2val[Abc_ObjName(pNode)] >> b ) % 2);
+    //   }
+    //   printf("\n");
+    // }
+    Abc_NtkForEachNode(pNtk, pNode, i) {  // * topological order
+      Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
+      unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+      unsigned int child1 = NodeName2val[Abc_ObjName(Abc_ObjFanin1(pNodeR))];
+      if ( Abc_ObjFaninC0(pNodeR) ) {
+        child0 ^= mask;
+      }
+      if ( Abc_ObjFaninC1(pNodeR) ) {
+        child1 ^= mask;
+      }
+      unsigned int parent = child0 & child1;
+      NodeName2val[Abc_ObjName(pNodeR)] = parent;
+      // printf("%s : ", Abc_ObjName(pNodeR));
+      // for ( int b = simulationCount - 1; b >= 0; --b ) {
+      //   printf("%d", ( parent >> b ) % 2);
+      // }
+      // printf("\n");
+    }
+    Abc_NtkForEachPo(pNtk, pNode, i) {
+      Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
+      unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+      if ( Abc_ObjFaninC0(pNodeR) ) {
+        child0 ^= mask;
+      }
+      // printf("%s : ", Abc_ObjName(pNodeR));
+      // for ( int b = simulationCount - 1; b >= 0; --b ) {
+      //   printf("%d", ( child0 >> b ) % 2);
+      // }
+      // printf("\n");
+      for ( int b = simulationCount - 1; b >= 0; --b ) {
+        POName2val[Abc_ObjName(pNodeR)] += ( char ) ( ( child0 >> b ) % 2 + 48 );
+      }
+    }
+  }
+
+  // print simulation result
+  Abc_NtkForEachPo(pNtk, pNode, i) {
+    Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
+    printf("%s: %s\n", Abc_ObjName(pNodeR), POName2val[Abc_ObjName(pNodeR)].c_str());
+  }
 }
 
 int Lsv_CommandSimulateAIG(Abc_Frame_t *pAbc, int argc, char **argv) {
