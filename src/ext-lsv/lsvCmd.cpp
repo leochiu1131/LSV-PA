@@ -6,6 +6,8 @@
 #include "bdd/cudd/cudd.h"
 #include "bdd/cudd/cuddInt.h"
 
+#include <vector>
+
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv); //argument count , argument value
 static int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -148,64 +150,148 @@ char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
 
 int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-    char* input_pattern;
+    std::vector<std::vector<int> >  ans;
+    // char* input_pattern;
     if (argc != 2) {
         Abc_Print(-2, "usage: lsv_sim_aig <input_pattern>\n");
         return 1;
     }
-
-    // Convert char* input_pattern to int* pi_values
-    input_pattern = argv[1];
-    size_t length = strlen(input_pattern);
-    int* pi_values = (int*) malloc(length * sizeof(int));
-    for(int i = 0; i < length; i++) {
-      pi_values[i] = (input_pattern[i] == '0') ? 0 : 1;    
+    FILE *fp = fopen(argv[1], "r");
+    if (fp == NULL) {
+        printf("File not found!\n");
+        return 1;
     }
-    for(int i = 0; i < length; i++) {
-      printf("i:%d,val:%d\n",i,pi_values[i]);
-    }
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        int len = 0;
+        for (len = 0; line[len] != '\n' && line[len] != '\0'; ++len);
 
+        int *pi_values = (int*)malloc(len * sizeof(int));
+        std::vector<int> anstemp;
+
+        for (int i = 0; i < len; ++i) {
+            pi_values[i] = line[i] - '0';
+        }
+
+        // Do something with pattern here
+        // printf("input:");
+        // for (int i = 0; i < len; ++i) {
+        //     printf("%d", pi_values[i]);
+        // } printf("\n");
+
+        Abc_Obj_t* pObj;
+        int i;
+
+        // Ensure the network is an AIG
+        if (!Abc_NtkIsStrash(pNtk)) {
+            printf("Not a strashed AIG\n");
+            return 0;
+        }
+
+        // Assign primary input (PI) values
+        i = 0;
+        Abc_NtkForEachPi(pNtk, pObj, i) {
+            pObj->pData = (void*)((long)pi_values[i]);
+            // printf("  assign: Id = %d, name = %s val:%d\n", Abc_ObjId(pObj), Abc_ObjName(pObj), pi_values[i]);
+        }
+
+        // Evaluate internal nodes
+        Abc_NtkForEachNode(pNtk, pObj, i) {
+            Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pObj);
+            Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pObj);
+            
+            int value1 = (int)((long)pFanin0->pData) ^ Abc_ObjFaninC0(pObj); //^ for the invert operation
+            int value2 = (int)((long)pFanin1->pData) ^ Abc_ObjFaninC1(pObj);
+
+            int result = value1 && value2;
+            // printf("Fanout Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+            // printf("  Fanin-0: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin0), Abc_ObjName(pFanin0), value1);
+            // printf("  Fanin-1: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin1), Abc_ObjName(pFanin1), value2);
+            // printf("  result:%d\n", result);
+
+
+            pObj->pData = (void*)((long)result);
+        }
+
+        // Evaluate and print primary output (PO) values
+        // printf("Primary Output Values:\n");
+        Abc_NtkForEachPo(pNtk, pObj, i) {
+            int value = (int)((long)Abc_ObjFanin0(pObj)->pData ^ Abc_ObjFaninC0(pObj));
+            // printf("%s: %d\n", Abc_ObjName(pObj), value);
+            anstemp.push_back(value);
+        }
+        ans.push_back(anstemp);
+        free(pi_values);
+    }
+    //output part
+    int patternlen = ans.size();
     Abc_Obj_t* pObj;
-    int i;
-
-    // Ensure the network is an AIG
-    if (!Abc_NtkIsStrash(pNtk)) {
-        printf("Not a strashed AIG\n");
-        return 0;
+    int POidx=0;
+    Abc_NtkForEachPo(pNtk, pObj, POidx) {
+      printf("%s: ", Abc_ObjName(pObj));
+      for(int pat=0;pat<patternlen;pat++){
+        printf("%d",ans[pat][POidx]);
+      }
+      printf("\n");
     }
 
-    // Assign primary input (PI) values
-    i = 0;
-    Abc_NtkForEachPi(pNtk, pObj, i) {
-        pObj->pData = (void*)((long)pi_values[i]);
-        printf("  assign: Id = %d, name = %s val:%d\n", Abc_ObjId(pObj), Abc_ObjName(pObj), pi_values[i]);
-    }
-
-    // Evaluate internal nodes
-    Abc_NtkForEachNode(pNtk, pObj, i) {
-        Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pObj);
-        Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pObj);
-        
-        int value1 = (int)((long)pFanin0->pData) ^ Abc_ObjFaninC0(pObj);
-        int value2 = (int)((long)pFanin1->pData) ^ Abc_ObjFaninC1(pObj);
-
-        int result = value1 && value2;
-        printf("Fanout Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
-        printf("  Fanin-0: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin0), Abc_ObjName(pFanin0), value1);
-        printf("  Fanin-1: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin1), Abc_ObjName(pFanin1), value2);
-        printf("  result:%d\n", result);
-
-
-        pObj->pData = (void*)((long)result);
-    }
-
-    // Evaluate and print primary output (PO) values
-    printf("Primary Output Values:\n");
-    Abc_NtkForEachPo(pNtk, pObj, i) {
-        int value = (int)((long)Abc_ObjFanin0(pObj)->pData ^ Abc_ObjFaninC0(pObj));
-        printf("%s: %d\n", Abc_ObjName(pObj), value);
-    }
-
-    free(pi_values);
+    fclose(fp);
     return 0;
+
+    /*
+      // Convert char* input_pattern to int* pi_values
+      input_pattern = argv[1];
+      size_t length = strlen(input_pattern);
+      int* pi_values = (int*) malloc(length * sizeof(int));
+      for(int i = 0; i < length; i++) {
+        pi_values[i] = (input_pattern[i] == '0') ? 0 : 1;    
+      }
+      for(int i = 0; i < length; i++) {
+        printf("i:%d,val:%d\n",i,pi_values[i]);
+      }
+
+      Abc_Obj_t* pObj;
+      int i;
+
+      // Ensure the network is an AIG
+      if (!Abc_NtkIsStrash(pNtk)) {
+          printf("Not a strashed AIG\n");
+          return 0;
+      }
+
+      // Assign primary input (PI) values
+      i = 0;
+      Abc_NtkForEachPi(pNtk, pObj, i) {
+          pObj->pData = (void*)((long)pi_values[i]);
+          printf("  assign: Id = %d, name = %s val:%d\n", Abc_ObjId(pObj), Abc_ObjName(pObj), pi_values[i]);
+      }
+
+      // Evaluate internal nodes
+      Abc_NtkForEachNode(pNtk, pObj, i) {
+          Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pObj);
+          Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pObj);
+          
+          int value1 = (int)((long)pFanin0->pData) ^ Abc_ObjFaninC0(pObj); //^ for the invert operation
+          int value2 = (int)((long)pFanin1->pData) ^ Abc_ObjFaninC1(pObj);
+
+          int result = value1 && value2;
+          printf("Fanout Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+          printf("  Fanin-0: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin0), Abc_ObjName(pFanin0), value1);
+          printf("  Fanin-1: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin1), Abc_ObjName(pFanin1), value2);
+          printf("  result:%d\n", result);
+
+
+          pObj->pData = (void*)((long)result);
+      }
+
+      // Evaluate and print primary output (PO) values
+      printf("Primary Output Values:\n");
+      Abc_NtkForEachPo(pNtk, pObj, i) {
+          int value = (int)((long)Abc_ObjFanin0(pObj)->pData ^ Abc_ObjFaninC0(pObj));
+          printf("%s: %d\n", Abc_ObjName(pObj), value);
+      }
+
+      free(pi_values);
+      return 0;
+      */
 }

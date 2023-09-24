@@ -106,13 +106,16 @@ cd ../../
 lsv_print_node
 collapse
 lsv_sim_bdd 1011
-source -s abc.rc
-read mul.blif
-strash
-lsv_sim_aig 1011
-lsv_sim_aig 1111
 lsv_sim_aig 0101
 lsv_sim_aig 0111
 lsv_sim_aig 1101
 lsv_sim_aig 1001
 lsv_sim_aig 1110
+lsv_sim_aig 1111
+cd ../../
+make
+lsv_sim_aig 1011
+source -s abc.rc
+read mul.blif
+strash
+lsv_sim_aig mul.in
