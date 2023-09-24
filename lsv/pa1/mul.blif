@@ -3,6 +3,9 @@
 .outputs y3 y2 y1 y0
 
 # Representing y0
+
+# .names a1 a0 b1 b0 y0
+# 1111 1
 .names a0 b0 y0
 11 1
 

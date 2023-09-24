@@ -1,11 +1,78 @@
 read ser_adder.blif 
 read mul.
 show_bdd
-show_bdd -g
-collapse
 strash
 print_stats
 read mul.blif 
 show
+read mul.blif
+lsv_sim_bdd 0000
+lsv_sim_bdd
+show_bdd -g
+lsv_print_node
+lsv_sim_bdd 0000
+lsv_sim_bdd 1111
+read toy.blif
+lsv_sim_bdd 00
+lsv_sim_bdd 11
+lsv_sim_bdd 10
+lsv_sim_bdd 01
+lsv_sim_bdd 0101
+../../abc
+lsv_sim_bdd 1010
+read mul.blif
+lsv_sim_bdd 0000
+lsv_sim_bdd 1111
+collpase
+lsv_sim_bdd 11
+cd ../../
+make
+read toy.blif
+lsv_sim_bdd 00
+lsv_sim_bdd 01
+lsv_sim_bdd 000
+make
+lsv_sim_bdd 1111
+lsv_sim_bdd 0001
+source -s abc.rc
+read toy.blif
+lsv_sim_bdd 00
+lsv_sim_bdd 01
+read mul.blif
+lsv_sim_bdd 1111
+lsv_sim_bdd 0000
+lsv_sim_bdd 0101
+lsv_sim_bdd 0111
+read tiy.blif
+lsv_sim_bdd 10
+lsv_sim_bdd 00
+read t0y.blif
+lsv_sim_bdd 01
+read toy.blif
+lsv_sim_bdd 11
+lsv_print_node
+lsv_sim_bdd 1110
+source -s abc.rc
+lsv_sim_bdd 1101
+lsv_sim_bdd 1111
+lsv_sim_bdd 1000
+lsv_sim_bdd 1001
+lsv_sim_bdd 1010
+lsv_sim_bdd 0000
+lsv_sim_bdd 0001
+lsv_sim_bdd 0100
+lsv_sim_bdd 1111
 source -s abc.rc
 read mul.blif
+collapse
+lsv_sim_bdd 0101
+lsv_sim_bdd 0110
+lsv_sim_bdd 0111
+lsv_sim_bdd 1001
+lsv_sim_bdd 1000
+lsv_sim_bdd 1010
+lsv_sim_bdd 1011
+lsv_sim_bdd 1100
+lsv_sim_bdd 1101
+lsv_sim_bdd 1110
+lsv_sim_bdd 1111
