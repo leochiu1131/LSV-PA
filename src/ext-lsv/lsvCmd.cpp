@@ -181,7 +181,7 @@ int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 
         Abc_Obj_t* pObj;
         int i;
-
+ 
         // Ensure the network is an AIG
         if (!Abc_NtkIsStrash(pNtk)) {
             printf("Not a strashed AIG\n");
