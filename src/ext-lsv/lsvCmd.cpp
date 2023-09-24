@@ -32,8 +32,7 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
     Abc_Obj_t* pFanin;
     int j;
     Abc_ObjForEachFanin(pObj, pFanin, j) { // for each fanin of this fanout
-      printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-             Abc_ObjName(pFanin));
+      printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
     }
     if (Abc_NtkHasSop(pNtk)) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
@@ -162,6 +161,9 @@ int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     for(int i = 0; i < length; i++) {
       pi_values[i] = (input_pattern[i] == '0') ? 0 : 1;    
     }
+    for(int i = 0; i < length; i++) {
+      printf("i:%d,val:%d\n",i,pi_values[i]);
+    }
 
     Abc_Obj_t* pObj;
     int i;
@@ -176,6 +178,7 @@ int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     i = 0;
     Abc_NtkForEachPi(pNtk, pObj, i) {
         pObj->pData = (void*)((long)pi_values[i]);
+        printf("  assign: Id = %d, name = %s val:%d\n", Abc_ObjId(pObj), Abc_ObjName(pObj), pi_values[i]);
     }
 
     // Evaluate internal nodes
@@ -187,13 +190,19 @@ int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
         int value2 = (int)((long)pFanin1->pData) ^ Abc_ObjFaninC1(pObj);
 
         int result = value1 && value2;
+        printf("Fanout Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+        printf("  Fanin-0: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin0), Abc_ObjName(pFanin0), value1);
+        printf("  Fanin-1: Id = %d, name = %s val:%d\n", Abc_ObjId(pFanin1), Abc_ObjName(pFanin1), value2);
+        printf("  result:%d\n", result);
+
+
         pObj->pData = (void*)((long)result);
     }
 
     // Evaluate and print primary output (PO) values
     printf("Primary Output Values:\n");
     Abc_NtkForEachPo(pNtk, pObj, i) {
-        int value = (int)((long)Abc_ObjFanin0(pObj)->pData);
+        int value = (int)((long)Abc_ObjFanin0(pObj)->pData ^ Abc_ObjFaninC0(pObj));
         printf("%s: %d\n", Abc_ObjName(pObj), value);
     }
 
