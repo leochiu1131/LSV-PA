@@ -84,10 +84,17 @@ lsv_sim_bdd 000
 lsv_sim_bdd 001
 lsv_sim_bdd 010
 lsv_sim_bdd 100
-lsv_print_node
 lsv_sim_bdd 111
-source -s abc.rc
-read mul.blif
 ../../abc
 collapse
 lsv_sim_bdd 0101
+read toy.blif
+lsv_print_node
+lsv_sim_aig 1010
+source -s abc.rc
+read mul.blif
+strash
+lsv_sim_aig 0101
+lsv_sim_aig 0111
+lsv_sim_aig 1111
+show
