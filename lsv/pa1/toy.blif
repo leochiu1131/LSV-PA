@@ -1,14 +1,16 @@
 .model toy
-.inputs a1 a0 
-.outputs y1 y0
+.inputs a b c
+.outputs y
 
 # Representing y1
-.names a1 y1 
-1 1
-
-.names a1 a0 y0 
-01 1
-10 1
+.names a b c y
+001 1
+010 1
+100 1
+011 1
+101 1
+110 1
+111 1
 
 
 .end

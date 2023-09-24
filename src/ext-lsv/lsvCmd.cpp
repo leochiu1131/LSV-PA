@@ -88,8 +88,6 @@ int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
         
         // Cofactor for each input bit in pattern
         Abc_Obj_t* pCiObj;
-        int j;
-
         
         int FaninIdx;
         Abc_Obj_t * pFanin; //iterate all fanin names
@@ -119,19 +117,13 @@ int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
         // Check if the result equals to constant 1
         int result = (temp == Cudd_ReadOne(dd));
         
-
-
         // Print the result
         Abc_Print(1, "%s: %d\n", Abc_ObjName(pPo), result);
 
         // Dereference all temporary BDD nodes
         Cudd_RecursiveDeref(dd, temp);
 
-        
-          
-
     }
-   
     return 0;
 }
 
