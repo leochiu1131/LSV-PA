@@ -205,6 +205,9 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
       Abc_NtkForEachPo(pNtk, pNode, i) {
         Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
         unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+        if ( Abc_AigNodeIsConst(Abc_ObjFanin0(pNodeR)) ) {
+          child0 |= mask;
+        }
         if ( Abc_ObjFaninC0(pNodeR) ) {
           child0 ^= mask;
         }
@@ -252,6 +255,9 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
     Abc_NtkForEachPo(pNtk, pNode, i) {
       Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
       unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
+      if ( Abc_AigNodeIsConst(Abc_ObjFanin0(pNodeR)) ) {
+        child0 |= mask;
+      }
       if ( Abc_ObjFaninC0(pNodeR) ) {
         child0 ^= mask;
       }
