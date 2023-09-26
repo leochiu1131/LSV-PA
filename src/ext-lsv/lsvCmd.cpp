@@ -177,13 +177,12 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
     }
     if ( simulationCount == 32 ) {
       // do simulation
-      // Abc_NtkForEachPi(pNtk, pNode, i) {
-      //   printf("%s : ", Abc_ObjName(pNode));
-      //   for ( int b = simulationCount - 1; b >= 0; --b ) {
-      //     printf("%d", ( NodeName2val[Abc_ObjName(pNode)] >> b ) % 2);
-      //   }
-      //   printf("\n");
-      // }
+      Abc_NtkForEachObj(pNtk, pNode, i) {
+        if ( Abc_AigNodeIsConst(pNode) ) {
+          NodeName2val[Abc_ObjName(pNode)] = mask;
+        }
+      }
+
       Abc_NtkForEachNode(pNtk, pNode, i) {  // * topological order
         Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
         unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
@@ -196,26 +195,14 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
         }
         unsigned int parent = child0 & child1;
         NodeName2val[Abc_ObjName(pNodeR)] = parent;
-        // printf("%s : ", Abc_ObjName(pNodeR));
-        // for ( int b = simulationCount - 1; b >= 0; --b ) {
-        //   printf("%d", ( parent >> b ) % 2);
-        // }
-        // printf("\n");
       }
+      
       Abc_NtkForEachPo(pNtk, pNode, i) {
         Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
         unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
-        if ( Abc_AigNodeIsConst(Abc_ObjFanin0(pNodeR)) ) {
-          child0 |= mask;
-        }
         if ( Abc_ObjFaninC0(pNodeR) ) {
           child0 ^= mask;
         }
-        // printf("%s : ", Abc_ObjName(pNodeR));
-        // for ( int b = simulationCount - 1; b >= 0; --b ) {
-        //   printf("%d", ( child0 >> b ) % 2);
-        // }
-        // printf("\n");
         for ( int b = simulationCount - 1; b >= 0; --b ) {
           POName2val[Abc_ObjName(pNodeR)] += ( char ) ( ( child0 >> b ) % 2 + 48 );
         }
@@ -227,13 +214,12 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
 
   // do simulation
   if ( simulationCount > 0 ) {
-    // Abc_NtkForEachPi(pNtk, pNode, i) {
-    //   printf("%s : ", Abc_ObjName(pNode));
-    //   for ( int b = simulationCount - 1; b >= 0; --b ) {
-    //     printf("%d", ( NodeName2val[Abc_ObjName(pNode)] >> b ) % 2);
-    //   }
-    //   printf("\n");
-    // }
+    Abc_NtkForEachObj(pNtk, pNode, i) {
+      if ( Abc_AigNodeIsConst(pNode) ) {
+        NodeName2val[Abc_ObjName(pNode)] = mask;
+      }
+    }
+
     Abc_NtkForEachNode(pNtk, pNode, i) {  // * topological order
       Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
       unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
@@ -246,26 +232,14 @@ void Lsv_NtkSimulateAIG(Abc_Ntk_t *pNtk, char *inputFileName) {
       }
       unsigned int parent = child0 & child1;
       NodeName2val[Abc_ObjName(pNodeR)] = parent;
-      // printf("%s : ", Abc_ObjName(pNodeR));
-      // for ( int b = simulationCount - 1; b >= 0; --b ) {
-      //   printf("%d", ( parent >> b ) % 2);
-      // }
-      // printf("\n");
     }
+    
     Abc_NtkForEachPo(pNtk, pNode, i) {
       Abc_Obj_t *pNodeR = Abc_ObjRegular(pNode);
       unsigned int child0 = NodeName2val[Abc_ObjName(Abc_ObjFanin0(pNodeR))];
-      if ( Abc_AigNodeIsConst(Abc_ObjFanin0(pNodeR)) ) {
-        child0 |= mask;
-      }
       if ( Abc_ObjFaninC0(pNodeR) ) {
         child0 ^= mask;
       }
-      // printf("%s : ", Abc_ObjName(pNodeR));
-      // for ( int b = simulationCount - 1; b >= 0; --b ) {
-      //   printf("%d", ( child0 >> b ) % 2);
-      // }
-      // printf("\n");
       for ( int b = simulationCount - 1; b >= 0; --b ) {
         POName2val[Abc_ObjName(pNodeR)] += ( char ) ( ( child0 >> b ) % 2 + 48 );
       }
