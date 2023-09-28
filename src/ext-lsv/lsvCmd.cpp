@@ -124,7 +124,7 @@ void Lsv_SimBdd(Abc_Ntk_t *pNtk, char **argv)
 		{
 			// printf("%s ", vNamesIn[i]);
 			// Find the truth value of i-th variable in BDD
-			for (j = 0; j < Abc_ObjFaninNum(pRoot); j++)
+			for (j = 0; j < Abc_NtkPiNum(pNtk); j++) // remember to compare all PI names
 			{
 				if (strcmp(vNamesIn[i], vNamesPi[j]) == 0)
 				{
@@ -143,9 +143,10 @@ void Lsv_SimBdd(Abc_Ntk_t *pNtk, char **argv)
 				tmp = Cudd_Cofactor(dd, ddnode, Cudd_Not(Cudd_bddIthVar(dd, i)));
 			}
 			ddnode = tmp;
+			Cudd_RecursiveDeref(dd, tmp);
 		}
 		// Output sim result
-		bool isOutput1 = Cudd_EquivDC(dd, ddnode, Cudd_ReadOne(dd), Cudd_ReadZero(dd));
+		bool isOutput1 = (ddnode == Cudd_ReadOne(dd));
 		printf("%s : %d\n", Abc_ObjName(pPo), isOutput1);
 	}
 	delete[] truthV;
