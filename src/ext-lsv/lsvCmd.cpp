@@ -49,84 +49,74 @@ void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* pattern) {
         return;
     }
 
+    // Parse the input pattern (e.g., "001" -> {0, 0, 1})
+    int patternLength = strlen(pattern);
+    if (patternLength != Abc_NtkPiNum(pNtk)) {
+        Abc_Print(-1, "Input pattern length does not match the number of primary inputs.\n");
+        return;
+    }
+
+    int* inputPattern = ABC_ALLOC(int, patternLength);
+    for (int i = 0; i < patternLength; i++) {
+        if (pattern[i] == '0') {
+            inputPattern[i] = 0;
+        }
+        else if (pattern[i] == '1') {
+            inputPattern[i] = 1;
+        }
+        else {
+            Abc_Print(-1, "Invalid character in input pattern: %c\n", pattern[i]);
+            ABC_FREE(inputPattern);
+            return;
+        }
+    }
+
     // Iterate through each primary output
     Abc_Obj_t* pPo;
-    int ithPo = 0;
+    int ithPo = -1;
 
     Abc_NtkForEachPo(pNtk, pPo, ithPo) 
     {
         char* poName = Abc_ObjName(pPo);
 
         // Get the associated BDD manager and node for the current PO
-        Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
-        assert(Abc_NtkIsBddLogic(pRoot->pNtk));
-        DdManager* dd = (DdManager*)pRoot->pNtk->pManFunc;
-        DdNode* poBdd = (DdNode*)pRoot->pData;
-
-        // Find the variable order of the BDD
-        char** vNamesIn = (char**)Abc_NodeGetFaninNames(pRoot)->pArray;
-
-        // Parse the input pattern (e.g., "001" -> {0, 0, 1})
-        int patternLength = strlen(pattern);
-        if (patternLength != Abc_NtkPiNum(pNtk)) {
-            Abc_Print(-1, "Input pattern length does not match the number of primary inputs.\n");
-            return;
-        }
-
-        int* inputPattern = ABC_ALLOC(int, patternLength);
-        for (int i = 0; i < patternLength; i++) {
-            if (pattern[i] == '0') {
-                inputPattern[i] = 0;
-            }
-            else if (pattern[i] == '1') {
-                inputPattern[i] = 1;
-            }
-            else {
-                Abc_Print(-1, "Invalid character in input pattern: %c\n", pattern[i]);
-                ABC_FREE(inputPattern);
-                return;
-            }
-        }
+        Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+        assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+        DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;  
+        DdNode* ddnode = (DdNode *)pRoot->pData;
 
         // Initialize result BDD with PO BDD
-        DdNode* resultBdd = poBdd;
-        Cudd_Ref(resultBdd); // Reference the result BDD
+        DdNode* resultBdd = ddnode;
 
-        // Iterate through each input variable using Abc_NtkForEachCi
-        Abc_Obj_t* pCi;
-        int ciIdx = 0;
+        // Iterate through each input variable using Abc_NtkForEachFanin
+        Abc_Obj_t* pFanin;
+        int faninIdx = 0;
 
-        Abc_NtkForEachCi(pNtk, pCi, ciIdx) 
+        Abc_ObjForEachFanin(pRoot, pFanin, faninIdx) 
         {
             // Get the corresponding input index based on variable name
-            char* ciName = Abc_ObjName(pCi);
+            char* faninName = Abc_ObjName(pFanin);
 
             // Find the matching input variable by name
             int inputIdx = -1;
+            Abc_Obj_t* pCi;
 
             Abc_NtkForEachCi(pNtk, pCi, inputIdx) {
-                if (strcmp(vNamesIn[ciIdx], ciName) == 0) {
-                    inputIdx = ciIdx;
+                if (strcmp(faninName, Abc_ObjName(pCi)) == 0) {
                     break;
                 }
             }
 
             if (inputIdx == -1) {
-                Abc_Print(-1, "Variable name %s not found in primary inputs.\n", ciName);
-                ABC_FREE(inputPattern);
-                Cudd_RecursiveDeref(dd, resultBdd);
+                Abc_Print(-1, "Variable name %s not found in primary inputs.\n", faninName);
                 return;
             }
 
             // Create a BDD variable for the input
-            DdNode* varBdd = Cudd_bddIthVar(dd, inputIdx);
+            DdNode* varBdd = Cudd_bddIthVar(dd, faninIdx);
 
             // Compute the cofactor based on the input pattern
-            DdNode* cofactor = Cudd_Cofactor(dd, resultBdd, inputPattern[inputIdx] ? varBdd : Cudd_Not(varBdd));
-
-            // Dereference the previous result BDD and replace it with the cofactor
-            Cudd_RecursiveDeref(dd, resultBdd);
-            resultBdd = cofactor;
+            resultBdd = Cudd_Cofactor(dd, resultBdd, inputPattern[inputIdx] ? varBdd : Cudd_Not(varBdd));
             Cudd_Ref(resultBdd); // Reference the new result BDD
         }
 
@@ -138,7 +128,6 @@ void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* pattern) {
 
         // Cleanup the result BDD
         Cudd_RecursiveDeref(dd, resultBdd);
-        ABC_FREE(inputPattern);
     }
 }
 
