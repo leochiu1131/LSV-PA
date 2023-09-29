@@ -2,6 +2,11 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+
 static int Lsv_CommandPrintNodes(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv);
@@ -36,6 +41,8 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t *pNtk)
 			printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
 						 Abc_ObjName(pFanin));
 		}
+		// printf("  Fcompl0-%d, Fcompl1-%d\n", pObj->fCompl0,
+		//			 pObj->fCompl1);
 		if (Abc_NtkHasSop(pNtk))
 		{
 			printf("The SOP of this node:\n%s", (char *)pObj->pData);
@@ -181,6 +188,137 @@ usage:
 	return 1;
 }
 
+void Lsv_SimAig(Abc_Ntk_t *pNtk, char **argv)
+{
+	// Read input pattern
+	std::ifstream infile;
+	infile.open(argv[1]);
+	std::string inputStr;
+	std::vector<std::string> inputPattern;
+	while (infile >> inputStr)
+	{
+		inputPattern.push_back(inputStr);
+	}
+
+	int count = 0;
+	int p;
+	std::vector<std::string> outputValue(Abc_NtkPoNum(pNtk), "");
+	while (true)
+	{
+		// Create parallel input pattern
+		std::vector<int> parallelPattern(Abc_NtkPiNum(pNtk), 0);
+		for (p = 0; (p < 32 && count + p < inputPattern.size()); p++)
+		{
+			for (int k = 0; k < Abc_NtkPiNum(pNtk); k++)
+			{
+				parallelPattern[k] = parallelPattern[k] << 1;
+				if (inputPattern[count + p][k] == '1')
+				{
+					parallelPattern[k] += 1;
+				}
+			}
+		}
+		// for (int k = 0; k < Abc_NtkPiNum(pNtk); k++)
+		// {
+		// 	std::cout << parallelPattern[k] << std::endl;
+		// }
+		if (p == 32)
+			count += 32;
+		else
+			count += p;
+
+		int i, j;
+		// Add input pattern to PI
+		std::vector<std::string> nodeName;
+		std::vector<int> nodeValue(parallelPattern.begin(), parallelPattern.end());
+		Abc_Obj_t *pPi;
+		Abc_NtkForEachPi(pNtk, pPi, i)
+		{
+			nodeName.push_back(Abc_ObjName(pPi));
+		}
+		// for (int k = 0; k < Abc_NtkPiNum(pNtk); k++)
+		// {
+		// 	std::cout << nodeValue[k] << std::endl;
+		// }
+
+		// Simulate the pattern
+		Abc_Obj_t *pObj;
+		Abc_NtkForEachNode(pNtk, pObj, i)
+		{
+			Abc_Obj_t *pFanin0, *pFanin1;
+			pFanin0 = Abc_ObjFanin0(pObj);
+			pFanin1 = Abc_ObjFanin1(pObj);
+
+			int tmp0 = 0, tmp1 = 0;
+			for (j = 0; j < nodeName.size(); j++)
+			{
+				if (strcmp(Abc_ObjName(pFanin0), nodeName[j].c_str()) == 0)
+				{
+					tmp0 = nodeValue[j];
+					// std::cout << j << " " << Abc_ObjName(pFanin0) << " " <<tmp0 << std::endl;
+					if (pObj->fCompl0)
+					{
+						tmp0 = ~tmp0;
+					}
+					break;
+				}
+			}
+			for (j = 0; j < nodeName.size(); j++)
+			{
+				if (strcmp(Abc_ObjName(pFanin1), nodeName[j].c_str()) == 0)
+				{
+					tmp1 = nodeValue[j];
+					// std::cout << j << " " << Abc_ObjName(pFanin1) << " " << tmp1 << std::endl;
+					if (pObj->fCompl1)
+					{
+						tmp1 = ~tmp1;
+					}
+					break;
+				}
+			}
+			nodeName.push_back(Abc_ObjName(pObj));
+			nodeValue.push_back(tmp0 & tmp1);
+		}
+
+		// Save value at PO
+		Abc_Obj_t *pPo;
+		Abc_NtkForEachPo(pNtk, pPo, i)
+		{
+			std::string bitStr = "";
+			for (j = 0; j < nodeName.size(); j++)
+			{
+				if (strcmp(Abc_ObjName(Abc_ObjFanin0(pPo)), nodeName[j].c_str()) == 0)
+				{
+					// std::cout << nodeValue[j] << std::endl;
+					if (pPo->fCompl0)
+					{
+						nodeValue[j] = ~nodeValue[j];
+					}
+					for (int k = 0; k < p; k++)
+					{
+						if (nodeValue[j] % 2 == 0)
+							bitStr = "0" + bitStr;
+						else
+							bitStr = "1" + bitStr;
+						nodeValue[j] = nodeValue[j] >> 1;
+					}
+					break;
+				}
+			}
+			// std::cout << bitStr << std::endl;
+			outputValue[i] += bitStr;
+		}
+		if (count >= inputPattern.size())
+		{
+			Abc_NtkForEachPo(pNtk, pPo, i)
+			{
+				printf("%s : %s\n", Abc_ObjName(pPo), outputValue[i].c_str());
+			}
+			break;
+		}
+	}
+}
+
 // lsv_sim_aig
 int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv)
 {
@@ -203,7 +341,7 @@ int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv)
 		return 1;
 	}
 	// Simulate the AIG
-
+	Lsv_SimAig(pNtk, argv);
 	return 0;
 
 usage:
