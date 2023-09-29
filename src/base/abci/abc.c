@@ -78,6 +78,19 @@ ABC_NAMESPACE_IMPL_START
 
 //#define USE_MINISAT22
 
+
+/* Functions added for LSV PA#1 */
+
+// Function that calls hello (demo purpose)
+// static int Abc_CommandHello                  ( Abc_Frame_t * pAbc, int argc, char ** argv );
+
+// Function added for PA#1 4.1 Function simulation with BDD
+// static int Abc_CommandLSVSimBDD              ( Abc_Frame_t * pAbc, int argc, char ** argv );
+
+// Function added for PA#1 4.2 Parallel function simulation with AIG
+// static int Abc_CommandLSVPallSimAIG          ( Abc_Frame_t * pAbc, int argc, char ** argv );
+
+/* */
 static int Abc_CommandPrintStats             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandPrintExdc              ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandPrintIo                ( Abc_Frame_t * pAbc, int argc, char ** argv );
