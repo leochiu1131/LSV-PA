@@ -1,0 +1,4 @@
+read ./lsv/pa1/mul.blif
+strash
+lsv_sim_aig pattern.in
+quit
