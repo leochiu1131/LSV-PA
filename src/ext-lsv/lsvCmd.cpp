@@ -201,7 +201,7 @@ int Lsv_AigSimulation(Abc_Ntk_t *pNtk, char* FileName){
       pObj->iTemp = pObj->iTemp << 1;
       pObj->iTemp = pObj->iTemp + Pattern[i] - '0';
       std::bitset<32>p(pObj->iTemp);
-      std::cout<<p<<std::endl;
+      // std::cout<<p<<std::endl;
     }
   }
 
