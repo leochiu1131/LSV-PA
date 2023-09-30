@@ -78,7 +78,6 @@ ABC_NAMESPACE_IMPL_START
 
 //#define USE_MINISAT22
 static int Abc_CommandLSVAigSim_golden       ( Abc_Frame_t * pAbc, int argc, char ** argv );
-static int Abc_CommandLSVAigSim              ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandLSVBDD2SOP             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
 static int Abc_CommandPrintStats             ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -849,7 +848,6 @@ void Abc_Init( Abc_Frame_t * pAbc )
 {
     // for logic synthesis and verification
     Cmd_CommandAdd( pAbc, "LSV",     "lsv_aigsim_g",   Abc_CommandLSVAigSim_golden,       0 );
-    Cmd_CommandAdd( pAbc, "LSV",     "lsv_sim_aig",   Abc_CommandLSVAigSim,       0 );
     Cmd_CommandAdd( pAbc, "LSV",     "lsv_bdd2sop",   Abc_CommandLSVBDD2SOP,       0 );
 
 
@@ -1486,114 +1484,7 @@ int Abc_CommandLSVAigSim_golden( Abc_Frame_t * pAbc, int argc, char ** argv ){
     return 0;
 
 }
-/**Function*************************************************************
 
-  Synopsis    [to implement parallel simulation]
-
-  Description [PA1 of LSV]
-
-  SideEffects []
-
-  SeeAlso     []
-
-***********************************************************************/
-int Abc_CommandLSVAigSim( Abc_Frame_t * pAbc, int argc, char ** argv ){
-    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
-    Sim_Man_t * p;
-
-    p = Sim_ManStart( pNtk, 0 );
-    if(argc != 2){
-        printf("should have only one argument!\n");
-        return 0;
-    }
-    else if(!Abc_NtkIsStrash(pNtk)){
-        printf("this command can only be called after strashed.\n");
-        return 0;
-    }
-    FILE* fin;
-
-    fin = fopen(argv[1], "r");
-    int piNum = Abc_NtkPiNum(pNtk) + 1;
-    char pattern[piNum];
-    Abc_Obj_t * pNode;
-    int i, k; 
-    printf("==========================================================\n");
-    printf("======================= for LSV PA1 ======================\n");
-    printf("==========================================================\n");
-    while(true){
-        printf("\n\n ======================= simulation start =======================\n");
-        int isFirst = 1, bitCount = 0, tobreak = 1;
-        while(fgets(pattern, piNum, fin)){
-            if(pattern[0] == '\n')
-                continue;
-            unsigned * pSimInfo;
-            // assign the random/systematic simulation info to the PIs
-            Abc_NtkForEachCi( p->pNtk, pNode, i )
-            {
-                pSimInfo = (unsigned *)p->vSim0->pArray[pNode->Id];
-                for ( k = 0; k < p->nSimWords; k++ ){
-                    if(isFirst == 1)
-                        pSimInfo[k] = (unsigned)0;
-                    pSimInfo[k] |= ((pattern[i] == '0' ? (unsigned)0 : (unsigned)1) << bitCount);
-                }
-            }
-            isFirst = 0;
-            ++bitCount;
-            if(bitCount > 31){
-                tobreak = 0;
-                break;
-            }
-        }
-        Abc_NtkForEachNode( p->pNtk, pNode, i ){
-            unsigned* psimNode = (unsigned *)p->vSim0->pArray[pNode->Id];
-            unsigned* psimNode0 = (unsigned *)p->vSim0->pArray[Abc_ObjFaninId0(pNode)];
-            unsigned* psimNode1 = (unsigned *)p->vSim0->pArray[Abc_ObjFaninId1(pNode)];
-            psimNode[0] = (unsigned)0;
-            
-            // printf("id = %2d : ", pNode->Id);
-            int compare0 = Abc_ObjFaninC0(pNode);   // == 0 -> positive input , == 1 -> negative input
-            int compare1 = Abc_ObjFaninC1(pNode);
-            // printf("compare0 = %d, compare1 = %d\n", compare0, compare1);
-            
-            unsigned inputPattern0 = compare0 == 0 ? psimNode0[0] : (~psimNode0[0]); 
-            unsigned inputPattern1 = compare1 == 0 ? psimNode1[0] : (~psimNode1[0]); 
-            psimNode[0] = inputPattern0 & inputPattern1;
-        }
-        Abc_NtkForEachCo( p->pNtk, pNode, i ){
-            unsigned* psimNode = (unsigned *)p->vSim0->pArray[pNode->Id];
-            unsigned* psimNode0 = (unsigned *)p->vSim0->pArray[Abc_ObjFaninId0(pNode)];
-            psimNode[0] = (unsigned)0;
-            // printf("id = %2d : ", pNode->Id);
-            int compare0 = Abc_ObjFaninC0(pNode);   // == 0 -> positive input , == 1 -> negative input
-            // printf("compare0 = %d\n", compare0);
-            
-            psimNode[0] = compare0 == 0 ? psimNode0[0] : (~psimNode0[0]); 
-        }
-
-
-        // Abc_NtkForEachCi( p->pNtk, pNode, i ){
-        //     // printf("%s = %u", Abc_ObjName(pNode), ((unsigned *)p->vSim0->pArray[pNode->Id])[0]);
-        //     printf("%4s = ", Abc_ObjName(pNode));
-        //     // printf("%10d   |   ", ((unsigned *)p->vSim0->pArray[pNode->Id])[0]);
-        //     print_binary(((unsigned *)p->vSim0->pArray[pNode->Id])[0], bitCount);
-        //     printf("\n");
-        // }
-        Abc_NtkForEachCo( p->pNtk, pNode, i ){
-            // printf("%s = %u", Abc_ObjName(pNode), ((unsigned *)p->vSim0->pArray[pNode->Id])[0]);
-            printf("%10s: ", Abc_ObjName(pNode));
-            print_binary(((unsigned *)p->vSim0->pArray[pNode->Id])[0], bitCount);
-            printf("\n");
-        }
-        printf("\n ======================= simulation end =======================\n\n");
-        if(tobreak == 1)
-            break;
-    }
-    printf("==========================================================\n");
-    printf("=========================== END ==========================\n");
-    printf("==========================================================\n");
-    Sim_ManStop( p );
-    return 0;
-}
 /**Function*************************************************************
 
   Synopsis    [to implement parallel simulation]
