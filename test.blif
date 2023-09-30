@@ -1,0 +1,9 @@
+.model test
+.inputs v1 v2
+.outputs j
+.names v1 v2 x
+0- 1
+-0 1
+.names x j
+0 1
+.end
