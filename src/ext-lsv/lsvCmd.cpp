@@ -67,7 +67,7 @@ void Lsv_NtkSimAig(Abc_Ntk_t *pNtk, Vec_Ptr_t *pModel_bit) {
         printf("%s: ", Abc_ObjName(pObj));
         for (int b = 0; b < batchSize; ++b) {
             int res = Vec_IntEntry((Vec_Int_t *)Vec_PtrEntry(pValue, i), b);
-            for (j = 0; j < nBits - 32 * b; ++j) {
+            for (j = 0; j < nBits - 32 * b && j < 32; ++j) {
                 printf("%d", (res >> j) & 1);
             }
         }
