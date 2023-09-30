@@ -109,7 +109,6 @@ int Lsv_CommandSimBdd( Abc_Frame_t * pAbc, int argc, char ** argv)
     assert(Abc_NtkIsBddLogic(pRoot->pNtk));
     DdManager *dd = (DdManager *)pRoot->pNtk->pManFunc;
     DdNode *f = (DdNode*)pRoot->pData;
-
     Abc_Obj_t* pFanin;
     Abc_ObjForEachFanin(pRoot, pFanin, j) {
       for (k = 0; k < PiNum; ++k)
@@ -119,8 +118,12 @@ int Lsv_CommandSimBdd( Abc_Frame_t * pAbc, int argc, char ** argv)
       DdNode *bVar = Cudd_bddIthVar(dd, iFanin);
       if (*(inputPattern + k) == '0')
         f = Cudd_Cofactor(dd, f, Cudd_Not(bVar));
-      else
+      else if (*(inputPattern + k) == '1')
         f = Cudd_Cofactor(dd, f, bVar);
+      else {
+        fprintf(stderr, "unknown character(%c)\n", *(inputPattern + k));
+        return 1;
+      }
     }
     printf("%s: %s\n", Abc_ObjName(pPo), (f == DD_ONE(dd))? "1": "0");
   }
@@ -191,6 +194,11 @@ int Lsv_CommandSimAig( Abc_Frame_t * pAbc, int argc, char ** argv)
   if (argc != 2)
     goto usage;
 
+  if (!Abc_NtkIsStrash(pNtk)) {
+    fprintf(stderr, "The network is not structurally hashed AIG.\n");
+    return 1;
+  }
+
 
   pFileName = argv[1];
   // check file exists
@@ -198,14 +206,14 @@ int Lsv_CommandSimAig( Abc_Frame_t * pAbc, int argc, char ** argv)
   if ( pFile == NULL )
   {
       fprintf( stderr, "Cannot open input file \"%s\".\n", pFileName );
-      return 0;
+      return 1;
   }
   fseek(pFile, 0, SEEK_END );
   nFileSize = ftell(pFile);
   if ( nFileSize == 0 ) {
     fclose(pFile);
     fprintf( stderr, "The file is empty\n");
-    return 0;
+    return 1;
   }
 
   buffer = ABC_ALLOC( char, nFileSize + 1);
@@ -228,14 +236,14 @@ int Lsv_CommandSimAig( Abc_Frame_t * pAbc, int argc, char ** argv)
       if (inputCount != Abc_NtkPiNum(pNtk) && hasInput) {
         fprintf(stderr, "The length of input pattern is different with the number of primary inputs\n");
         ABC_FREE(buffer);
-        return 0;
+        return 1;
       }
       inputCount = hasInput = 0;
     }
     else {
       fprintf(stderr, "There is unknown input (%c) in the given file(%s)\n", *c, pFileName);
       ABC_FREE(buffer);
-      return 0;
+      return 1;
     }
   }
 
