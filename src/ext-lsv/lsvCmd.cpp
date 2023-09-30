@@ -2,6 +2,7 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 #include <iostream>
+using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -65,15 +66,77 @@ usage:
 }
 
 void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* arg) {
+  int inputNum = Abc_NtkCiNum(pNtk);
+  bool inputValue[inputNum];
+  for (int i = 0; i < inputNum; ++i) {
+    inputValue[i] = (arg[i] == '1');
+  }
+  // int orderMap[inputNum];
+  // // blif order
+  // char** inputNameArray = Abc_NtkCollectCioNames(pNtk, 0);
 
+  // int i;
+  // Abc_Obj_t* pPi;
+  // // blif order
+  // Abc_NtkForEachPi(pNtk, pPi, i) {
+  //   for (int j = 0; j < inputNum; ++j) {
+  //     if (strcmp(inputNameArray[j], Abc_ObjName(pPi)) == 0) {
+  //       // orderMap[j] = i;
+  //     }
+  //   }
+  // }
+
+  
+  // cout << inputNameArray[0] << inputNameArray[1]<<inputNameArray[2]<<inputNameArray[3]<<endl;
+
+  DdManager* dd = (DdManager*)pNtk->pManFunc; 
+  int ithPo; Abc_Obj_t* pPo;
+  Abc_NtkForEachPo(pNtk, pPo, ithPo) {
+    cout << Abc_ObjName(pPo) << ": ";
+    Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+    // cout << Abc_ObjName(pRoot) << endl;
+    DdNode* ddnode = (DdNode *)pRoot->pData;
+    // bdd order
+    char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+    // cout << vNamesIn[0] << vNamesIn[1]<<vNamesIn[2]<<vNamesIn[3]<<endl;
+    // cout << "poInputNum: " << poInputNum <<endl;
+    for (int i = 0; i < Abc_NtkPiNum(pNtk); ++i) {
+      if (!vNamesIn[i]) continue;
+      if ( vNamesIn[i][0] == '\0') continue;
+      Abc_Obj_t* pPi;
+      int j;
+      Abc_NtkForEachPi(pNtk, pPi, j) {
+        // find matching input
+        if (strcmp(vNamesIn[i], Abc_ObjName(pPi)) == 0) {
+          if (inputValue[j]) {
+            ddnode = Cudd_Cofactor(dd, ddnode, dd->vars[i]);
+          } else {
+            ddnode = Cudd_Cofactor(dd, ddnode, Cudd_Not(dd->vars[i]));
+          }
+        }
+      }
+    }
+    // for (int i = 0; i < poInputNum; ++i) {
+    //   if (inputValue[]) {
+    //     ddnode = Cudd_Cofactor(dd, ddnode, dd->vars[orderMap[]]);
+    //   } else {
+    //     ddnode = Cudd_Cofactor(dd, ddnode, Cudd_Not(dd->vars[orderMap[j]]));
+    //   }
+    // }
+    if (ddnode == Cudd_ReadOne(dd) || ddnode == Cudd_Not(Cudd_ReadZero(dd))) {
+      cout << 1 << endl;
+    }
+    if (ddnode == Cudd_ReadZero(dd) || ddnode == Cudd_Not(Cudd_ReadOne(dd))) {
+      cout << 0 << endl;
+    }  //else    cout << 1 << endl;
+
+    // cout << ddnode << endl;
+  }
 }
 
 
 int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  std::cout << "argc: " << argc << std::endl;
-  std::cout << "argv0: " << argv[0] << std::endl;
-  std::cout << "argv1: " << argv[1] << std::endl;
   int c;
   Extra_UtilGetoptReset();
   while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
