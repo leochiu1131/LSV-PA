@@ -216,27 +216,6 @@ int Lsv_SimAig(Abc_Ntk_t* pNtk, char* fileName) {
   // print result
   int ithPo;
   Abc_Obj_t* pPo;
-  // int num_remainBits = num_line % 32;
-  // int num_sim = (num_remainBits == 0) ? (num_line / 32) : (num_line / 32 + 1);
-  // printf("num_sim: %d\n", num_sim);
-  
-  // Abc_NtkForEachPo(pNtk, pPo, ithPo){
-  //   printf("%s: ", Abc_ObjName(pPo));
-  //   for(int ithSim = 0; ithSim < num_sim; ++ithSim){
-  //     if(ithSim != (num_sim - 1)){
-  //       for(int j = 0; j < 32; ++j){
-  //         printf("%d", ((result[ithPo][ithSim] & (1 << j)) != 0));
-  //       }
-  //     }
-  //     else{
-  //       for(int j = 0; j < num_remainBits; ++j){
-  //         printf("%d", ((result[ithPo][ithSim] & (1 << j)) != 0));
-  //       }
-  //     }
-  //   }
-  //   printf("\n");
-
-  
   Abc_NtkForEachPo(pNtk, pPo, ithPo){
     printf("%s: ", Abc_ObjName(pPo));
     int num_remainBits = num_line;
