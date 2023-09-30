@@ -132,12 +132,15 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
   Vec_Ptr_t * vNames;
   int n = Abc_NtkCiNum(pNtk);
   vNames = Vec_PtrStart( n );
+
+  // print original names // delete later
   Abc_Print(1, "Original names:\n");
   Abc_NtkForEachCi(pNtk, pPi, j) {
       printf("Name %d: %s\n", j, Abc_ObjName(pPi));
       Vec_PtrWriteEntry( vNames, j, Abc_ObjName(pPi));
   }
 
+  // trace every Po's bdd
   int i;
   Abc_Obj_t * pPo;
   Abc_NtkForEachPo( pNtk, pPo, i ) {
@@ -150,10 +153,10 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
       // Reason: Abc_ObjGlobalBdd(pCo) is uncallable (segfault)
       // So, how can we get the globalBdds?
 
-      // Get bdd
-      // print names
+      // print current Po name
       (void) fprintf( dd->out, "%s", Abc_ObjName(pPo) );
 
+      // Get bdd
       DdNode * bdd = ( DdNode * ) pObj->pData; // They share the same DdManager.
       if (bdd == NULL) {
         Abc_Print(1, ": No bdd.\n");
@@ -161,9 +164,9 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
         continue; // irrevelent obj
       }
       
-
       (void) fflush( dd->out );
 
+      // get Fanin Names for Simulation
       Vec_Ptr_t *vNamesIn;
       vNamesIn = Abc_NodeGetFaninNames( pObj );
       // char** vNamesInC = (char**) Abc_NodeGetFaninNames( pObj )->pArray;
@@ -175,17 +178,12 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
       //   printf("invperm[%d]: %d\n", i, (DdManager *)(static_cast<Abc_Ntk_t *>(pObj->pNtk)->pManFunc)->invperm[i];
       // }
 
-      // char ** ppNamesIn, ** ppNamesOut;
-      // ppNamesIn = Abc_NtkCollectCioNames( pNtk, 0 );
-      // ppNamesOut = Abc_NtkCollectCioNames( pNtk, 1 );
-
-      // Abc_NtkForEachPi
-
+      // Debug Info // USEFUL
       // Cudd_PrintDebug(dd, bdd, 10, 3); 
 
       // Trace down the variables, until we meet a constant.
-      // DdNode *node = Cudd_BddToAdd(dd, bdd); // node pointer
-      DdNode *node = bdd;
+      // DdNode *node = Cudd_BddToAdd(dd, bdd);
+      DdNode *node = bdd; // node pointer
       DdNode *N;
       N = Cudd_Regular( node );
 
@@ -299,9 +297,6 @@ int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Print( -1, "Simulating BDDs can only be done for logic BDD networks (run \"bdd\").\n" );
     return 1;
   }
-
-
-  // if digit of number less than n
 
   Abc_Print(1, "Start!\n");
 
