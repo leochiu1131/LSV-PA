@@ -140,37 +140,36 @@ usage:
 
 // ----------------------------------------------------------
 
-void Lsv_SimAig(Abc_Ntk_t* pNtk, int* inputPatterns, int num_pattern) {
-  if( !(Abc_NtkIsStrash(pNtk)) ) {
-    printf("This command is for AIG only!\nPlease use \"strash\" first.\n");
-    return;
-  }
-
+void Lsv_SimAig_32bit_parallel(Abc_Ntk_t* pNtk, int* inputPatterns, std::vector<std::vector<int>>& result){
   int i;
   Abc_Obj_t * pNode;
   int inputVal0, inputVal1;
 
-  Abc_NtkForEachCi( pNtk, pNode, i ){
+  Abc_NtkForEachCi(pNtk, pNode, i){
     pNode->iTemp = inputPatterns[i];
   }
-  Abc_NtkForEachNode( pNtk, pNode, i )
+  Abc_NtkForEachNode(pNtk, pNode, i)
   {
     inputVal0 = (Abc_ObjFanin0(pNode)->iTemp) ^ (0xffffffff * Abc_ObjFaninC0(pNode)); // complement
     inputVal1 = (Abc_ObjFanin1(pNode)->iTemp) ^ (0xffffffff * Abc_ObjFaninC1(pNode));
     pNode->iTemp = (inputVal0 & inputVal1);
   }
-  Abc_NtkForEachPo( pNtk, pNode, i ){
-    int result = (Abc_ObjFanin0(pNode)->iTemp) ^ (0xffffffff * Abc_ObjFaninC0(pNode));
-    printf("%s: ", Abc_ObjName(pNode));
-    for(int ithPat = 0; ithPat < num_pattern; ++ithPat){
-      printf("%d", ((result & (1 << ithPat)) != 0));
-    }
-    printf("\n");
+  Abc_NtkForEachPo(pNtk, pNode, i){
+    result[i].emplace_back(0);
+    result[i].back() = (Abc_ObjFanin0(pNode)->iTemp) ^ (0xffffffff * Abc_ObjFaninC0(pNode));
   }
 
 }
 
-int Lsv_SimAig_ReadFile(char* fileName, int num_input, int* &inputPatterns, int &num_pattern){
+int Lsv_SimAig(Abc_Ntk_t* pNtk, char* fileName) {
+  if( !(Abc_NtkIsStrash(pNtk)) ) {
+    printf("This command is for AIG only!\nPlease use \"strash\" first.\n");
+    return 1;
+  }
+
+  int* inputPatterns;
+  int num_input = Abc_NtkPiNum(pNtk);
+
   // read input
   FILE *inputFile;
   inputFile = fopen(fileName, "r");
@@ -186,10 +185,15 @@ int Lsv_SimAig_ReadFile(char* fileName, int num_input, int* &inputPatterns, int 
   size_t len = 0;
   ssize_t read;
   int num_line = 0;
+  std::vector<std::vector<int>> result;
+  result.resize(num_input, {});
+
   while ((read = getline(&line, &len, inputFile)) != -1) {
-    if(num_line >= 32){
-      printf("Exceed #input_patterns limit, 32-bit only!\n");
-      return 1;
+    if( (num_line != 0) && (num_line % 32 == 0) ) {
+      Lsv_SimAig_32bit_parallel(pNtk, inputPatterns, result);
+      for(int ithIn = 0; ithIn < num_input; ++ithIn){
+        inputPatterns[ithIn] = 0;
+      }
     }
     for(int ithIn = 0; ithIn < num_input; ++ithIn){
       if(line[ithIn] == '\n' || line[ithIn] == '\0'){
@@ -199,13 +203,60 @@ int Lsv_SimAig_ReadFile(char* fileName, int num_input, int* &inputPatterns, int 
       if(line[ithIn] == '1'){
         inputPatterns[ithIn] |= 1 << num_line;
       }
+      else if(line[ithIn] != '0'){
+        printf("Wrong input patterns!\nPlease check the input file.\n");
+        return 1;
+      }
     }
     ++num_line;
   }
 
-  num_pattern = num_line;
+  Lsv_SimAig_32bit_parallel(pNtk, inputPatterns, result);
+
+  // print result
+  int ithPo;
+  Abc_Obj_t* pPo;
+  // int num_remainBits = num_line % 32;
+  // int num_sim = (num_remainBits == 0) ? (num_line / 32) : (num_line / 32 + 1);
+  // printf("num_sim: %d\n", num_sim);
+  
+  // Abc_NtkForEachPo(pNtk, pPo, ithPo){
+  //   printf("%s: ", Abc_ObjName(pPo));
+  //   for(int ithSim = 0; ithSim < num_sim; ++ithSim){
+  //     if(ithSim != (num_sim - 1)){
+  //       for(int j = 0; j < 32; ++j){
+  //         printf("%d", ((result[ithPo][ithSim] & (1 << j)) != 0));
+  //       }
+  //     }
+  //     else{
+  //       for(int j = 0; j < num_remainBits; ++j){
+  //         printf("%d", ((result[ithPo][ithSim] & (1 << j)) != 0));
+  //       }
+  //     }
+  //   }
+  //   printf("\n");
+
+  
+  Abc_NtkForEachPo(pNtk, pPo, ithPo){
+    printf("%s: ", Abc_ObjName(pPo));
+    int num_remainBits = num_line;
+    int ithSim = 0;
+    while(num_remainBits >= 32){
+      for(int ithBit = 0; ithBit < 32; ++ithBit){
+        printf("%d", ((result[ithPo][ithSim] & (1 << ithBit)) != 0));
+      }
+      num_remainBits -= 32;
+      ++ithSim;
+    }
+    for(int ithBit = 0; ithBit < num_remainBits; ++ithBit){
+      printf("%d", ((result[ithPo][ithSim] & (1 << ithBit)) != 0));
+    }
+    printf("\n");
+  }
+  
 
   return 0;
+
 }
 
 int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
@@ -213,9 +264,6 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
   int c;
   int nArgc;
   char **nArgv;
-  int* inputPatterns;
-  int num_pattern;
-  int num_input = 0;
   Extra_UtilGetoptReset();
   while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
     switch (c) {
@@ -240,14 +288,10 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 1;
   }
 
-  num_input = Abc_NtkPiNum(pNtk);
-
-  if( Lsv_SimAig_ReadFile(nArgv[0], num_input, inputPatterns, num_pattern) ){
-    // read error
+  if( Lsv_SimAig(pNtk, nArgv[0]) ) {
     return 1;
   }
 
-  Lsv_SimAig(pNtk, inputPatterns, num_pattern);
   return 0;
 
 usage:
