@@ -115,7 +115,20 @@ lsv_sim_aig 1111
 cd ../../
 make
 lsv_sim_aig 1011
-source -s abc.rc
 read mul.blif
+lsv_sim_bdd 1111
+strash
+lsv_sim_aig mul.in
+lsv_sim_bdd 000
+lsv_sim_bdd 001
+lsv_sim_bdd 111
+lsv_sim_bdd 100
+lsv_sim_bdd 010
+lsv_sim_bdd 110
+collapse
+lsv_sim_bdd 11111
+lsv_sim_bdd 11011
+source -s abc.rc
+read add.blif
 strash
 lsv_sim_aig mul.in
