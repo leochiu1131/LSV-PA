@@ -3,9 +3,11 @@
 #include "base/main/mainInt.h"
 
 static int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSimAIG(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBDD, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAIG, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -17,12 +19,11 @@ struct PackageRegistrationManager {
 } lsvPackageRegistrationManager;
 
 void Lsv_SimBDD(Abc_Ntk_t* pNtk, char* pInput) {
-  Abc_Obj_t* pObj;
-  int i;
-  bool ans=0;
+  Abc_Obj_t *pObj, *pI, *pPo, *pFanin;
+  int ithPo, ithFI;
+  bool ans = 0;
   Abc_Print(1, "%s\n", pInput);
-  
-  /* Abc_NtkForEachNode(pNtk, pObj, i) {
+/*   Abc_NtkForEachNode(pNtk, pObj, i) {
     printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
     Abc_Obj_t* pFanin;
     int j;
@@ -33,8 +34,21 @@ void Lsv_SimBDD(Abc_Ntk_t* pNtk, char* pInput) {
     if (Abc_NtkHasSop(pNtk)) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
     }
-  } */
-  Abc_Print(1, "y: %i\n", ans);
+  }  */
+  
+  Abc_NtkForEachPo(pNtk, pPo, ithPo) {
+    Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+    
+    assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+    DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;  
+    DdNode* ddnode = (DdNode *)pRoot->pData;
+    Abc_ObjForEachFanin( pRoot, pFanin, ithFI ){
+      char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+      //printf("%s\n", *vNamesIn);
+      //Cudd_Cofactor(dd, 
+    }
+    Abc_Print(1, "%s: %i\n", Abc_ObjName(pPo), ans);
+  }
 }
 
 int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
@@ -66,8 +80,77 @@ int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
   return 0;
 
 usage:
-  Abc_Print(-2, "usage: lsv_sim_bdd [-h]\n");
+  Abc_Print(-2, "usage: lsv_sim_bdd <input_pattern>\n");
   Abc_Print(-2, "\t        print function simulation with BDD\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+void Lsv_SimAIG(Abc_Ntk_t* pNtk, char* pInput) {
+  Abc_Obj_t *pObj, *pI, *pPo, *pFanin;
+  int ithPo, ithFI;
+  bool ans = 0;
+  Abc_Print(1, "%s\n", pInput);
+  Abc_NtkForEachPo(pNtk, pPo, ithPo) {
+    Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+    assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+    DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;  
+    DdNode* ddnode = (DdNode *)pRoot->pData;
+    Abc_ObjForEachFanin( pRoot, pFanin, ithFI ){
+      
+    }
+    Abc_Print(1, "%s: %i\n", Abc_ObjName(pPo), ans);
+  }
+}
+int Lsv_CommandSimAIG(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  char * pInput = argv[1];
+  char **pInputSet;
+  FILE *fp;
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  if ( !Abc_NtkIsStrash(pNtk) )
+  {
+    Abc_Print( -1, "This command works only for AIGs (run \"strash\").\n" );
+    return 1;
+  }
+  if (argc != 2){
+    Abc_Print(-1, "One input file required.\n");
+    return 1;
+  }
+  fp = fopen(pInput, "r");
+  if(fp != NULL){
+    char* buff;
+    int len;
+    fseek(fp, 0, SEEK_END);
+    len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    buff = (char*)malloc(len * sizeof(char));
+
+    while(fgets(buff, len * sizeof(char), fp) != NULL){
+      
+      printf("%s", buff);
+      //Lsv_SimAIG( pNtk, buff);
+    }
+    fclose(fp);
+  }
+
+  return 0;
+  
+usage:
+  Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
+  Abc_Print(-2, "\t        print function simulation with AIG\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
