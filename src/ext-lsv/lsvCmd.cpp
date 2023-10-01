@@ -16,10 +16,13 @@ struct PackageRegistrationManager {
   PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer); }
 } lsvPackageRegistrationManager;
 
-void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
+void Lsv_SimBDD(Abc_Ntk_t* pNtk, char* pInput) {
   Abc_Obj_t* pObj;
   int i;
-  Abc_NtkForEachNode(pNtk, pObj, i) {
+  bool ans=0;
+  Abc_Print(1, "%s\n", pInput);
+  
+  /* Abc_NtkForEachNode(pNtk, pObj, i) {
     printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
     Abc_Obj_t* pFanin;
     int j;
@@ -30,11 +33,13 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
     if (Abc_NtkHasSop(pNtk)) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
     }
-  }
+  } */
+  Abc_Print(1, "y: %i\n", ans);
 }
 
 int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  char * pInput = argv[1];
   int c;
   Extra_UtilGetoptReset();
   while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
@@ -49,7 +54,15 @@ int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Print(-1, "Empty network.\n");
     return 1;
   }
-  Lsv_NtkPrintNodes(pNtk);
+  if ( !Abc_NtkIsBddLogic( pNtk ) ){
+        Abc_Print( -1, "This command is only applicable to logic BDD networks (run \"collapse\").\n" );
+        return 1;
+  }
+  if (argc != 2){
+    Abc_Print(-1, "One input pattern required.\n");
+    return 1;
+  }
+  Lsv_SimBDD( pNtk, pInput);
   return 0;
 
 usage:
