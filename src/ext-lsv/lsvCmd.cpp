@@ -3,14 +3,21 @@
 #include "base/main/mainInt.h"
 #include "bdd/extrab/extraBdd.h"
 
+// For file parser in 4-2
+#include <fstream>
+#include <iostream>
+#include <vector>
+using namespace std;
+
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
-static int Lsv_CommandSimAIG(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -128,7 +135,6 @@ void Lsv_Sim_Bdd(Abc_Ntk_t* pNtk, int* pattern){
   return;
 }
 
-
 int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
   
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
@@ -164,6 +170,143 @@ int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 usage:
   Abc_Print(-2, "usage: lsv_sim_bdd [-h]\n");
+  Abc_Print(-2, "       Nothing to say. [-h]\n");
+  return 1;
+}
+
+
+// Exercise 4-2 main code
+
+// the last bit store the width
+int* AIGInputFileParser(const char* intputfile, int ntkInput_num){
+  
+  ifstream infile(intputfile);
+  std::string pattern;
+  int* patternPI = new int[ntkInput_num+1];
+  int width = 0;
+
+  while (infile >> pattern) {
+    
+    if (pattern.size() != ntkInput_num) {
+      Abc_Print(-1, "Dismatch number of input pattern and network input.\n");
+      return 0;
+    }
+    for (int i = 0; i < ntkInput_num; ++i) {
+      if (pattern[i] != '0' && pattern[i] != '1') {
+        Abc_Print(-1, "Invalid input pattern!.\n");
+        return 0;
+      }
+      patternPI[i] = (patternPI[i] << 1) | (pattern[i] == '1');
+    }
+    width++;
+    if (width>32){
+      Abc_Print(-1, "Do not support parallel simulation more than 32 bits.");
+      return 0;
+    }
+  }
+  patternPI[ntkInput_num+1] = width;
+  // printf("Width: %i\n", width);
+  return patternPI;
+}
+
+void Lsv_print_result(Abc_Ntk_t* pNtk, int width){
+
+  int ithPo;
+  Abc_Obj_t* pObj;
+  Abc_NtkForEachPo(pNtk, pObj, ithPo) {
+    Abc_Obj_t* f0 = Abc_ObjFanin0(pObj);
+    int v0 = Abc_ObjFaninC0(pObj) ? ~(f0->iTemp) : (f0->iTemp);
+    pObj->iTemp = v0;
+    
+    string output;
+    for (int j=0; j<width; ++j) {
+      // Abc_Print(1, "%i", (((v0 >> j) & 1) ? "1" : "0"));
+      output = (((v0 >> j) & 1) ? "1" : "0") + output;
+    }
+    Abc_Print(1, "%s: %s\n", Abc_ObjName(pObj), output.c_str());
+  }
+}
+
+
+void Lsv_Sim_Aig(Abc_Ntk_t* pNtk, int* patterns, int ntkInput_num){
+  
+  int width = patterns[ntkInput_num+1];
+  // printf("width: %i", width);
+  if (!width) return;
+
+  Abc_Obj_t* pObj;
+  
+  // Set input value
+  int ithPi;
+  Abc_NtkForEachPi(pNtk, pObj, ithPi) {
+    pObj->iTemp = patterns[ithPi];
+  }
+
+  // Start the simulation with topological order
+  int ithOb;
+  Abc_NtkForEachObj(pNtk, pObj, ithOb) {
+    
+    if (Abc_ObjIsPi(pObj) || pObj->Type == Abc_ObjType_t::ABC_OBJ_CONST1 || !Abc_ObjIsNode(pObj)) continue;
+    
+    // Verify values by child nodes and completement
+    Abc_Obj_t* f0 = Abc_ObjFanin0(pObj);
+    bool c0 = Abc_ObjFaninC0(pObj);
+    int v0 = c0 ? ~(f0->iTemp) : (f0->iTemp);
+
+    Abc_Obj_t* f1 = Abc_ObjFanin1(pObj);
+    bool c1 = Abc_ObjFaninC1(pObj);
+    int v1 = c1 ? ~(f1->iTemp) : (f1->iTemp);
+
+    // And
+    pObj->iTemp = v0 & v1;
+  }
+
+  Lsv_print_result(pNtk, width);
+
+  return;
+}
+
+int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
+  
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  char* input_file = argv[1];
+  int ntkInput_num = Abc_NtkPiNum(pNtk);
+  int* input_pattern = AIGInputFileParser(input_file, ntkInput_num);
+
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+
+  if (!Abc_NtkIsStrash(pNtk)) {
+    Abc_Print(-1, "The network is not a AIG network.\n");
+    return 1;
+  }
+
+  if (!input_file) {
+    Abc_Print(-1, "Input file missing.\n");
+    return 1;
+  }
+
+  // Error while parsing
+  if (!input_pattern) return 1;
+
+  Lsv_Sim_Aig(pNtk, input_pattern, ntkInput_num);
+
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
   Abc_Print(-2, "       Nothing to say. [-h]\n");
   return 1;
 }
