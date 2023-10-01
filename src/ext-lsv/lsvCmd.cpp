@@ -2,10 +2,10 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 
-static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBDD, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -33,7 +33,7 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
   }
 }
 
-int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
+int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
   int c;
   Extra_UtilGetoptReset();
@@ -53,8 +53,8 @@ int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
   return 0;
 
 usage:
-  Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
-  Abc_Print(-2, "\t        prints the nodes in the network\n");
+  Abc_Print(-2, "usage: lsv_sim_bdd [-h]\n");
+  Abc_Print(-2, "\t        print function simulation with BDD\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
