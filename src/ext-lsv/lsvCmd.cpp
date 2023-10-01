@@ -17,7 +17,7 @@ void printBits(unsigned int num, int size=32){
     int i=0;
     for(;i<size;++i){
       // print last bit and shift left.
-      printf("%u ", !!(num&maxPow));
+      printf("%u", !!(num&maxPow));
       num = num<<1;
     }
     printf("\n");
@@ -139,8 +139,8 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
         // Trace down the variables, until we meet a constant.
         // Reference: ddPrintMintermAux()
         // DdNode *node = Cudd_BddToAdd(dd, bdd);
-        DdNode *node = bdd; // node pointer
-        DdNode *N;
+        DdNode * node = bdd; // node pointer
+        DdNode * N;
         N = Cudd_Regular( node );
 
         i=0;
@@ -148,7 +148,7 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
           char * e = (char*)Vec_PtrEntry( vNamesIn, N->index );
           int j=0;
           Vec_PtrForEachEntry( char*, vNames, name, j ) {
-              if ( strcmp(name, e) == 0) break;
+              if ( strcmp(name, e) == 0 ) break;
           }
 
           if( ! Vec_PtrEntry(  vSimPat, j ) ) { // inverse
@@ -190,6 +190,11 @@ void Lsv_BddSimulation( Abc_Ntk_t * pNtk , Vec_Ptr_t *& vSimPat ) {
 
 int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!pNtk) {
+        Abc_Print(-1, "Empty network.\n");
+        return 1;
+    }
+
     int c, i=0;
     Extra_UtilGetoptReset();
 
@@ -240,23 +245,13 @@ int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 
 
-    if (!pNtk) {
-        Abc_Print(-1, "Empty network.\n");
-        return 1;
-    }
     if ( !Abc_NtkIsBddLogic(pNtk) )
     {
-        Abc_Print( -1, "Simulating BDDs can only be done for logic BDD networks (run \"bdd\").\n" );
+        Abc_Print( -1, "Simulating BDDs can only be done for logic BDD networks (run \"collapse\").\n" );
         return 1;
     }
 
     // Abc_Print(1, "Start!\n");
-
-    // Abc_Print(1, "simPattern Size: %6d\n", vSimPat->nSize);
-    // Vec_PtrWriteEntry( vSimPat, 0, (void *) true);
-    // Vec_PtrWriteEntry( vSimPat, 1, (void *) false);
-    // Vec_PtrWriteEntry( vSimPat, 2, (void *) false);
-    // Vec_PtrWriteEntry( vSimPat, 3, (void *) true);
 
     Lsv_BddSimulation( pNtk , vSimPat );
     
@@ -364,6 +359,10 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
     int c;
     Extra_UtilGetoptReset();
+    if ( pNtk == NULL ) {
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
 
     int n = Abc_NtkCiNum( pNtk );
     Vec_Ptr_t * vSimPat = Vec_PtrStart( n );
@@ -382,6 +381,7 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
         }
     }
 
+
     // get input string
     char ** pArgvNew;
     char * fileSim;
@@ -390,7 +390,7 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     nArgcNew = argc - globalUtilOptind;
     if ( nArgcNew != 1 )
     {
-        Abc_Print( -1, "There is no simulation pattern.\n" );
+        Abc_Print( -1, "There is no File.\n" );
         return 1;
     }
 
@@ -462,8 +462,8 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 0;
 
 usage:
-    Abc_Print(-2, "usage: lsv_sim_aig <input_pattern> [-h]\n");
-    Abc_Print(-2, "\t        perform 32-bit parallel simulation on aig\n");
+    Abc_Print(-2, "usage: lsv_sim_aig <input_file> [-h]\n");
+    Abc_Print(-2, "\t        Perform 32-bit parallel simulation on AIG.\n");
     Abc_Print(-2, "\t-h    : print the command usage\n");
     return 1;
 }
