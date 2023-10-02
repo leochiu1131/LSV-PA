@@ -64,8 +64,8 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk,const std::string input_pattern_file) {
         std::cout << Abc_ObjName(pObj) << ": ";
         for (int t = 0; t < parallel_inputs_n; ++t) {
             parallel_inputs[Abc_ObjId(pObj) - 1][t] = pObj->fCompl0 
-                ? ~parallel_inputs[Abc_ObjId(Abc_ObjFanin0(pEntry)) - 1][t]
-                : parallel_inputs[Abc_ObjId(Abc_ObjFanin0(pEntry)) - 1][t];
+                ? ~parallel_inputs[Abc_ObjId(Abc_ObjFanin0(pObj)) - 1][t]
+                : parallel_inputs[Abc_ObjId(Abc_ObjFanin0(pObj)) - 1][t];
         }
         if (input_patterns.size() % 32 == 0)
             for (int t = 0; t < parallel_inputs_n; ++t)
