@@ -207,3 +207,8 @@ Temporary Items
 
 # Local History for Visual Studio Code
 .history/
+
+*.ps
+*.pdf
+*.history
+*.tgz

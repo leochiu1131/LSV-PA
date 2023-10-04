@@ -1,0 +1,9 @@
+print_stats
+read mul.blif 
+source -s abc.rc
+read mul.blif
+show
+collapse
+show_bdd -g
+strash
+logic
