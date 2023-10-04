@@ -1,0 +1,27 @@
+.model mul
+.inputs a1 a0 b1 b0
+.outputs y3 y2 y1 y0
+.subckt myand A=a0 B=b1 O=w0
+.subckt myand A=a0 B=b0 O=y0
+.subckt myand A=a1 B=b0 O=w2
+.subckt myand A=a1 B=b1 O=w3
+.subckt myand A=w0 B=w2 O=w4
+.subckt myand A=w3 B=w4 O=y3
+.subckt myxor A=w0 B=w2 O=y1
+.subckt myxor A=w3 B=w4 O=y2
+.end
+
+.model myand
+.inputs A B
+.outputs O
+.names A B O 
+11 1
+.end
+
+.model myxor
+.inputs A B
+.outputs O 
+.names A B O 
+01 1
+10 1
+.end
