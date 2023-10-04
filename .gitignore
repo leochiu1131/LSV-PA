@@ -207,3 +207,22 @@ Temporary Items
 
 # Local History for Visual Studio Code
 .history/
+
+
+# my experiment file
+2bitmultiplier.ps
+8.in
+9bit.in
+32.in
+35.in
+64.in
+67.in
+130.in
+adder.blif
+aig.py
+all_pattern.in
+bdd.in
+compare.py
+ref_9bit.out
+my_9bit.out
+test*

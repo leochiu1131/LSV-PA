@@ -1,0 +1,32 @@
+.model 2bitmultiplier
+.inputs a1 a0 b1 b0 
+.outputs y3 y2 y1 y0
+.subckt fullmultiplier a = a0 b = b0 s = y0
+.subckt fullmultiplier a = a1 b = b0 s = tmp1
+.subckt fullmultiplier a = a0 b = b1 s = tmp2
+.subckt fullmultiplier a = a1 b = b1 s = tmp3
+.subckt fulladder      a = tmp1 b = tmp2 cin = 0      s = y1 cout = CARRY1
+.subckt fulladder      a = tmp3 b = 0    cin = CARRY1 s = y2 cout = y3
+.end
+
+.model fulladder
+.inputs a b cin
+.outputs s cout
+.names a b k
+10 1
+01 1
+.names k cin s
+10 1
+01 1
+.names a b cin cout
+11- 1
+1-1 1
+-11 1
+.end
+
+.model fullmultiplier
+.inputs a b
+.outputs s
+.names a b s
+11 1
+.end
