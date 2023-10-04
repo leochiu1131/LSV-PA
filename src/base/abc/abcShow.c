@@ -137,8 +137,8 @@ void Abc_NtkShowBdd( Abc_Ntk_t * pNtk, int fCompl, int fReorder )
         printf( "Construction of global BDDs has failed.\n" );
         return;
     }
-    //printf( "Shared BDD size = %6d nodes.\n", Cudd_ReadKeys(dd) - Cudd_ReadDead(dd) );
-
+    // printf( "Shared BDD size = %6d nodes.\n", Cudd_ReadKeys(dd) - Cudd_ReadDead(dd) );
+    
     // complement the global functions
     vFuncsGlob = Vec_PtrAlloc( Abc_NtkCoNum(pNtk) );
     Abc_NtkForEachCo( pNtk, pObj, i )
