@@ -1,0 +1,17 @@
+.model mul
+.inputs a b c d e 
+.outputs y0 y1
+
+# Representing y0
+
+# .names a1 a0 b1 b0 y0
+# 1111 1
+.names c a y0
+01 1
+
+.names b d e y1
+111 1
+
+
+
+.end

@@ -1,0 +1,9 @@
+read
+help
+source -s abc.rc
+read full_adder.blif 
+print_stats
+strash
+show
+collapse
+show_bdd -g
