@@ -361,6 +361,7 @@ Cudd_DumpDot(
     DdNodePtr   *nodelist;
     long        refAddr, diff, mask;
 
+
     /* Build a bit array with the support of f. */
     sorted = ABC_ALLOC(int,nvars);
     if (sorted == NULL) {
