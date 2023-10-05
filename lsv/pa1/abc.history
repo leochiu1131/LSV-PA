@@ -1,0 +1,5 @@
+read mul.blif
+balance
+read read mul.blif
+read read ./mul.blif
+read read a
