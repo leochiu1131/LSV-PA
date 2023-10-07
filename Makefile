@@ -213,7 +213,7 @@ tags:
 
 $(PROG): $(OBJ)
 	@echo "$(MSG_PREFIX)\`\` Building binary:" $(notdir $@)
-	$(VERBOSE)$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(VERBOSE)$(LD) -g -o $@ $^ $(LDFLAGS) $(LIBS)
 
 lib$(PROG).a: $(LIBOBJ)
 	@echo "$(MSG_PREFIX)\`\` Linking:" $(notdir $@)

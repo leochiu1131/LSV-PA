@@ -1,0 +1,10 @@
+src/ext-lsv/lsvCmd.cpp: In function 「void Lsv_NtkAIGSim(Abc_Ntk_t*, char*)」:
+src/ext-lsv/lsvCmd.cpp:176:67: 錯誤：expected 「]」 before 「)」 token
+  176 |         else if (Abc_ObjFaninC0(p_Node) && map[Abc_ObjName(p_Node)) //11
+      |                                                                   ^
+      |                                                                   ]
+src/ext-lsv/lsvCmd.cpp: In function 「void Lsv_NtkBDDsim(Abc_Ntk_t*, char*)」:
+src/ext-lsv/lsvCmd.cpp:245:15: 警告：建議在做為真值的賦值敘述前後加上括號 [-Wparentheses]
+  245 |     if(ddnode = dd->one)
+      |        ~~~~~~~^~~~~~~~~
+make: *** [Makefile:185: src/ext-lsv/lsvCmd.o] 錯誤 1

@@ -1,0 +1,27 @@
+# Benchmark "full_adder" written by ABC on Mon Sep 18 00:03:46 2023
+.model full_adder
+.inputs a b c-in
+.outputs sum c-out
+.names b c-in new_n6
+11 1
+.names b c-in new_n7
+00 1
+.names new_n6 new_n7 new_n8
+00 1
+.names a new_n8 new_n9
+10 1
+.names b c-in new_n10
+01 1
+.names b c-in new_n11
+10 1
+.names new_n10 new_n11 new_n12
+00 1
+.names a new_n12 new_n13
+00 1
+.names new_n9 new_n13 sum
+00 0
+.names a new_n7 new_n15
+10 1
+.names new_n6 new_n15 c-out
+00 0
+.end
