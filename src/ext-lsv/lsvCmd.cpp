@@ -163,11 +163,13 @@ void Lsv_SimAig(Abc_Ntk_t* pNtk, char* input_file){
   int num_nodes = Abc_NtkNodeNum(pNtk); //excluding PI/PO, index starts from num_row + num_output + 1
   int num_output = Abc_NtkCoNum(pNtk); //second in data index
   int total_num_nodes = num_row + num_nodes + num_output + 1;// index 0 is not used
-  int num_col = 1;//=0?
+  int num_col = 0;//=0?
 
-  char* buffer = (char*) malloc(num_row*sizeof(char));
-  while (fgets(buffer, sizeof(buffer), fp)!=NULL){
-    num_col++;
+  char* buffer = (char*) malloc(num_row*sizeof(char)+1); // for the terminator
+  while (fgets(buffer, num_row+2, fp)!=NULL){ //read at most count-1 chars from file
+    if(strcmp(buffer, "\n") !=0){
+      num_col++;
+    }
   }
   fclose(fp);
 
@@ -175,15 +177,22 @@ void Lsv_SimAig(Abc_Ntk_t* pNtk, char* input_file){
   int** data = (int**)malloc(total_num_nodes* sizeof(int*));
   for(int i=0; i<total_num_nodes; i++){ data[i] = (int*) malloc(num_col*sizeof(int)); }
 
+  //constant 1 node is indexed 0
+  for(int i=0; i < num_col; i++){
+    data[0][i] = 1;
+  }
+
   /*transpose the input for input simulation pattern: 
   input_data[i] contains a parallel pattern for i-th PI, which is the first n elements of Foreachnode...*/
   num_col = 0;
   fp = fopen(input_file, "r");
-  while (fgets(buffer, sizeof(buffer), fp)!=NULL){
-    for(int i=1; i < num_row+1; i++){
-      data[i][num_col] = buffer[i-1] - '0';
+  while (fgets(buffer, num_row+2, fp)!=NULL){
+    if(strcmp(buffer, "\n") !=0){
+      for(int i=1; i < num_row+1; i++){
+        data[i][num_col] = buffer[i-1] - '0';
+      }
+      num_col++;
     }
-    num_col++;
   }
   // Abc_NtkForEachPi( pNtk, pObj, j ){
   //   int index = pObj->Id;
