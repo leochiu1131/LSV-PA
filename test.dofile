@@ -1,4 +1,4 @@
-read ./lsv/pa1/mul.blif
+read ./lsv/pa1/square.blif
 strash
-lsv_sim_aig pattern.in
+lsv_sim_aig pattern.in 
 quit
