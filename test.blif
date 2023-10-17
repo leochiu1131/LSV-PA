@@ -1,0 +1,15 @@
+.model multiplier
+.inputs a b c d
+.outputs f fb fb_bar
+.names a b c d f
+1111 1
+1001 1
+0100 1
+0010 1 
+.names a c d fb
+111 1
+000 1
+.names a c d fb_bar
+101 1
+010 1
+.end
