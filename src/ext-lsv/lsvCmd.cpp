@@ -123,6 +123,10 @@ int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 void Lsv_SimAig(Abc_Ntk_t* pNtk, vector<int>& inputVec, vector<string>& outputVec) {
   int ithPi;
   Abc_Obj_t* pPi;
+
+  Abc_Obj_t* pConst = Abc_NtkObj(pNtk, 0);
+  pConst->iTemp = 0XFFFFFFFF;
+
   Abc_NtkForEachPi( pNtk, pPi, ithPi) {
     pPi->iTemp = inputVec[ithPi];  
   }
