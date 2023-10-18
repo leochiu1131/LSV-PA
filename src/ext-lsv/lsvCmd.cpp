@@ -15,7 +15,7 @@ using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv);
-static int Lsv_SimAig(Abc_Frame_t *pAbc, int argc, char **argv);
+static int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv);
 
 void init(Abc_Frame_t *pAbc)
 {
