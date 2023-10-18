@@ -248,6 +248,14 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
     cout << endl;
   }
+  for (int i = 0; i < ptn_fdim; i++) {
+    delete[] ptn[i];
+  }
+  delete[] ptn;
+  for (int i = 0; i < pNtk->vPos->nSize; ++i) {
+    delete[] output[i];
+  }
+  delete[] output;
 
   return 0;
 }
