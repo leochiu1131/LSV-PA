@@ -272,94 +272,103 @@ void Lsv_AigSimulation ( Abc_Ntk_t * pNtk, std::vector<std::vector<unsigned int>
   std::vector<unsigned int> temp;
   std::vector<std::vector<unsigned int>> output(Abc_NtkPoNum(pNtk), temp);
 
-  for( int j=0,N=vSimPatGrp.size(); j<N; ++j) {
+    for( int j=0,N=vSimPatGrp.size(); j<N; ++j) {
 
-    std::vector<unsigned int> vSimPat = vSimPatGrp[j];
+        std::vector<unsigned int> vSimPat = vSimPatGrp[j];
 
-    // reset iTemp
-    Abc_NtkForEachObj(pNtk, pObj, i) {
-        pObj->iTemp = 0;
-    }
-    // Assign value to PI
-    Abc_NtkForEachPi( pNtk, pObj, i ) {
-        pObj->iTemp = (int)vSimPat[i];
-    }
+        // reset iTemp
+        Abc_NtkForEachObj(pNtk, pObj, i) {
+            pObj->iTemp = 0;
+        }
+        // Assign value to PI
+        Abc_NtkForEachPi( pNtk, pObj, i ) {
+            pObj->iTemp = (int)vSimPat[i];
+        }
 
-    // Traverse AIG, run simulation
-    Abc_NtkForEachObj(pNtk, pObj, i) {
-        // skip PI/PO and const1/0s
-        if (Abc_ObjType(pObj) == ABC_OBJ_PI) continue;
-        if (Abc_ObjType(pObj) == ABC_OBJ_CONST1) {
-            if (Abc_ObjIsComplement( pObj ))
-                pObj->iTemp = (unsigned int)0;
-            else
-                pObj->iTemp = UINT32_MAX;
-            // printBits(pObj->iTemp);
+        // Traverse AIG, run simulation
+        Abc_NtkForEachObj(pNtk, pObj, i) {
+            // skip PI/PO and const1/0s
+            if (Abc_ObjType(pObj) == ABC_OBJ_PI) continue;
+            if (Abc_ObjType(pObj) == ABC_OBJ_CONST1) {
+                pObj->iTemp = (int)UINT64_MAX;
+                continue;
+            }
+            if (Abc_ObjType(pObj) == ABC_OBJ_PO) {
+                // Abc_Print(1, "Obj %s | c0: %s\n", Abc_ObjName(pObj), Abc_ObjName(Abc_ObjFanin0(pObj)));
+                continue;
+            }
+            if (Abc_ObjType(pObj) != ABC_OBJ_NODE) continue;
+
+            // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+
+
+            // And-Inverter Simulation
+            Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+            Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
+            unsigned int a = (unsigned int)Fanin0->iTemp;
+            if (Abc_ObjFaninC0(pObj)) a ^= UINT64_MAX;
+            unsigned int b = (unsigned int)Fanin1->iTemp;
+            if (Abc_ObjFaninC1(pObj)) b ^= UINT64_MAX;
+            unsigned int data = a & b;
+            
+            pObj->iTemp = (int)data;
+            // Abc_Print(1, "Data: ");
+            // printBits(data);
             // Abc_Print(1, "\n");
-            continue;
         }
-        if (Abc_ObjType(pObj) == ABC_OBJ_PO) {
-            // Abc_Print(1, "Obj %s | c0: %s\n", Abc_ObjName(pObj), Abc_ObjName(Abc_ObjFanin0(pObj)));
-            continue;
+
+        // Print PO
+        Abc_NtkForEachPo(pNtk, pObj, i) {
+
+            unsigned int data;
+            if (Abc_ObjFaninNum(pObj) == 1) {
+                Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+                // Abc_Obj_t * Fanin1 = Abc_ObjChild1(pObj);
+                // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+                // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+                unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
+                if (Abc_ObjFaninC0(pObj)) 
+                    iTemp0 ^= UINT32_MAX;
+
+                data = iTemp0;
+            }
+            else {
+                Abc_Print(-1, "Error: Fanin of Po has problem.");
+            }
+            // else if (Abc_ObjFaninNum(pObj) > 1) {
+            //     Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+            //     Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
+            //     Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+            //     Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+            //     unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
+            //     if ( Abc_ObjFaninC0(pObj) ) 
+            //         iTemp0 ^= UINT32_MAX;
+            //     unsigned int iTemp1 = (unsigned int)Fanin1->iTemp;
+            //     if ( Abc_ObjFaninC1(pObj) ) 
+            //         iTemp1 ^= UINT32_MAX;
+
+            //     data = iTemp0 & iTemp1;
+            // }
+            // else {
+            //     Abc_Print(-1, "Error: Fanin of Po has problem.");
+            // }
+            // Abc_Print(1, "Po : %s | Child : %s\n", Abc_ObjName(pObj), Abc_ObjName(Fanin0));
+            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+
+            pObj->iTemp = (int)data; // Is this needed?
+
+            output[i].push_back(data);
         }
-        // Abc_Print(1, "Obj %s ", Abc_ObjName(pObj));
-        // Abc_Obj_t * pFanin;
-        // int j;
-        // Abc_Obj_t * Fanin0;
-        // Abc_Obj_t * Fanin1;
-        // Abc_ObjForEachFanin(pObj, pFanin, j) {
-        //   assert(j < 2);
-        //   // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //   //        Abc_ObjName(pFanin));
-        //   if (j == 0) {
-        //     Fanin0 = pFanin;
-        //     // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //     //      Abc_ObjName(Fanin0));
-        //   }
-        //   else if (j == 1){
-        //     Fanin1 = pFanin;
-        //     // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //     //      Abc_ObjName(Fanin1));
-        //   }
-        // }
-
-        Abc_Obj_t * Fanin0 = Abc_ObjFanin(pObj, 0);
-        Abc_Obj_t * Fanin1 = Abc_ObjFanin(pObj, 1);
-
-        // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
-
-        // This print fails for some unknown reason.....
-        // Abc_Print(1, " | c0:%s, c1:%s\n", 
-        //           Abc_ObjName(Fanin0), 
-        //           Abc_ObjName(Fanin1));
-
-        // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
-
-
-        // And-Inverter Simulation
-        unsigned int a = (unsigned int)Fanin0->iTemp;
-        if (Abc_ObjFaninC0(pObj)) a ^= UINT32_MAX;
-        unsigned int b = (unsigned int)Fanin1->iTemp;
-        if (Abc_ObjFaninC1(pObj)) b ^= UINT32_MAX;
-        unsigned int data = a & b;
-        
-        pObj->iTemp = (int)data;
-        // Abc_Print(1, "Data: ");
-        // printBits(data);
-        // Abc_Print(1, "\n");
     }
 
-    // Print PO
-    Abc_NtkForEachPo(pNtk, pObj, i) {
-        Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+    // Abc_NtkForEachObj(pNtk, pObj, i) {
+    //     Abc_Print(1, "%s : ", Abc_ObjName(pObj));
+    //     printBits((unsigned int)pObj->iTemp, 3);
+    //     Abc_Print(1, "\n");
+    // }
 
-        unsigned int data = Abc_ObjFaninC0(pObj) ? ~(unsigned int)Fanin0->iTemp : (unsigned int)Fanin0->iTemp;
-        // pObj->iTemp = data; // Is this needed?
-
-        output[i].push_back(data);
-    }
-  }
-
+    // Print
     Abc_NtkForEachPo(pNtk, pObj, i) {
         Abc_Print(1, "%s : ", Abc_ObjName(pObj));
         int eachLine = lineCount;
