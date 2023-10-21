@@ -234,6 +234,7 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
   
   filePointer = fopen(inputfile, "r");
   Abc_NtkForEachPo(pNtk, pNode, i) {
+    printf("temp: %s  %d\n", Abc_ObjName(Abc_ObjFanin0(pNode)), Abc_AigNodeIsConst(Abc_ObjFanin0(pNode)));
     string temp;
     store_table.push_back(temp);
   }
@@ -288,8 +289,9 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
 
         Abc_ObjForEachFanin( pNode, pFanin, k )
         {
-          if (k == 0)
+          if (k == 0) {
             new_sim->set_fanin1_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+          }
           else
             new_sim->set_fanin2_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
         }
@@ -303,8 +305,17 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
 
       Abc_NtkForEachPo(pNtk, pNode, i){
         if (sim_table.find(Abc_ObjName(Abc_ObjFanin0(pNode))) == sim_table.end()) {
-          for (int m = 32; m > 0; m--) {
-            store_table[i] += "0";
+          if (Abc_AigNodeIsConst(Abc_ObjFanin0(pNode))) {
+            if (Abc_ObjFaninC(pNode,0)) {
+              for (int m = 0; m < 32; m++) {
+                store_table[i] += "0";
+              }
+            }
+            else {
+              for (int m = 0; m < 32; m++) {
+                store_table[i] += "1";
+              }
+            }
           }
           continue;
         }
@@ -337,6 +348,8 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
   if (times % 32 != 0) {
     int temp1 = times % 32;
     Vec_PtrForEachEntry( Abc_Obj_t *, vNodes, pNode, i ){
+        printf("name: %s  %d\n", Abc_ObjName(pNode), Abc_AigNodeIsConst(pNode));
+      
       Simulation * new_sim = new Simulation;
     
       // printf("name: %s\n", Abc_ObjName(pNode));
@@ -359,8 +372,17 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
 
     Abc_NtkForEachPo(pNtk, pNode, i){
       if (sim_table.find(Abc_ObjName(Abc_ObjFanin0(pNode))) == sim_table.end()) {
-        for (int m = 0; m < temp1; m++) {
-          store_table[i] += "0";
+        if (Abc_AigNodeIsConst(Abc_ObjFanin0(pNode))) {
+          if (Abc_ObjFaninC(pNode,0)) {
+            for (int m = 0; m < temp1; m++) {
+              store_table[i] += "0";
+            }
+          }
+          else {
+            for (int m = 0; m < temp1; m++) {
+              store_table[i] += "1";
+            }
+          }
         }
         continue;
       }
