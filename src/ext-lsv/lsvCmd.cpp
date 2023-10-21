@@ -4,6 +4,7 @@
 #include "bdd/extrab/extraBdd.h"
 #include <map>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -225,14 +226,23 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
   int i,k;
   int count = 0;
   map<string, Simulation*> sim_table;
+  vector<string> store_table;
   Abc_Obj_t * pNode, * pFanin;
 
   Vec_Ptr_t * vNodes;
   vNodes = Abc_NtkDfsIter( pNtk, 0);
   
   filePointer = fopen(inputfile, "r");
+  Abc_NtkForEachPo(pNtk, pNode, i) {
+    string temp;
+    store_table.push_back(temp);
+  }
+  // Abc_NtkForEachPo(pNtk, pNode, i){
+  //   printf("%s: %s\n", Abc_ObjName(pNode), store_table[i].c_str());
+  // }
 
 
+  int times = 0;
   while (fgets(pattern, sizeof(pattern), filePointer) != NULL) {
     // Process each line here
     size_t length = strlen(pattern);
@@ -261,54 +271,126 @@ void Lsv_NtkSimAig(Abc_Ntk_t* pNtk, char* inputfile) {
         }
       }
     }
+    times++;
+    if (times % 32 == 0 && times != 0) {
+      Vec_PtrForEachEntry( Abc_Obj_t *, vNodes, pNode, i ){
+        Simulation * new_sim;
+        if (sim_table.find(Abc_ObjName(pNode)) == sim_table.end()) {
+          new_sim = new Simulation;
+        }
+        else {
+          new_sim = sim_table[Abc_ObjName(pNode)];
+        }
+        // printf("name: %s\n", Abc_ObjName(pNode));
+        // printf("n: %d\n", Abc_ObjFaninNum(pNode));
+        // printf("%s, %s\n", Abc_ObjName(Abc_ObjFanin0(pNode)), Abc_ObjName(Abc_ObjFanin1(pNode)));
+        // printf("%d, %d\n", Abc_ObjFaninC(pNode,0), Abc_ObjFaninC(pNode,1));
+
+        Abc_ObjForEachFanin( pNode, pFanin, k )
+        {
+          if (k == 0)
+            new_sim->set_fanin1_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+          else
+            new_sim->set_fanin2_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+        }
+        new_sim->set_complement1(Abc_ObjFaninC(pNode,0));
+        new_sim->set_complement2(Abc_ObjFaninC(pNode,1));
+        new_sim->sim();
+        if (sim_table.find(Abc_ObjName(pNode)) == sim_table.end()) {
+          sim_table[Abc_ObjName(pNode)] = new_sim;
+        }
+      }
+
+      Abc_NtkForEachPo(pNtk, pNode, i){
+        if (sim_table.find(Abc_ObjName(Abc_ObjFanin0(pNode))) == sim_table.end()) {
+          for (int m = 32; m > 0; m--) {
+            store_table[i] += "0";
+          }
+          continue;
+        }
+        Simulation * output = sim_table[Abc_ObjName(Abc_ObjFanin0(pNode))];
+        bool is_com = Abc_ObjFaninC(pNode,0);
+        
+        for (int m = 31; m >= 0; m--) {
+          int temp = getNthBit(output->get_sim_pattern(), m);
+          if (temp == 0) {
+            if (is_com) {
+              store_table[i] += "1";
+            }
+            else {
+              store_table[i] += "0";
+            }
+          }
+          else {
+            if (is_com) {
+              store_table[i] += "0";
+            }
+            else {
+              store_table[i] += "1";
+            }
+          }
+        }
+      }
+    }
   }
 
-  Vec_PtrForEachEntry( Abc_Obj_t *, vNodes, pNode, i ){
-    Simulation * new_sim = new Simulation;
-  
-    // printf("name: %s\n", Abc_ObjName(pNode));
-    // printf("n: %d\n", Abc_ObjFaninNum(pNode));
-    // printf("%s, %s\n", Abc_ObjName(Abc_ObjFanin0(pNode)), Abc_ObjName(Abc_ObjFanin1(pNode)));
-    // printf("%d, %d\n", Abc_ObjFaninC(pNode,0), Abc_ObjFaninC(pNode,1));
+  if (times % 32 != 0) {
+    int temp1 = times % 32;
+    Vec_PtrForEachEntry( Abc_Obj_t *, vNodes, pNode, i ){
+      Simulation * new_sim = new Simulation;
+    
+      // printf("name: %s\n", Abc_ObjName(pNode));
+      // printf("n: %d\n", Abc_ObjFaninNum(pNode));
+      // printf("%s, %s\n", Abc_ObjName(Abc_ObjFanin0(pNode)), Abc_ObjName(Abc_ObjFanin1(pNode)));
+      // printf("%d, %d\n", Abc_ObjFaninC(pNode,0), Abc_ObjFaninC(pNode,1));
 
-    Abc_ObjForEachFanin( pNode, pFanin, k )
-    {
-      if (k == 0)
-        new_sim->set_fanin1_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
-      else
-        new_sim->set_fanin2_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+      Abc_ObjForEachFanin( pNode, pFanin, k )
+      {
+        if (k == 0)
+          new_sim->set_fanin1_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+        else
+          new_sim->set_fanin2_pattern(sim_table[Abc_ObjName(pFanin)]->get_sim_pattern());
+      }
+      new_sim->set_complement1(Abc_ObjFaninC(pNode,0));
+      new_sim->set_complement2(Abc_ObjFaninC(pNode,1));
+      new_sim->sim();
+      sim_table[Abc_ObjName(pNode)] = new_sim;
     }
-    new_sim->set_complement1(Abc_ObjFaninC(pNode,0));
-    new_sim->set_complement2(Abc_ObjFaninC(pNode,1));
-    new_sim->sim();
-    sim_table[Abc_ObjName(pNode)] = new_sim;
+
+    Abc_NtkForEachPo(pNtk, pNode, i){
+      if (sim_table.find(Abc_ObjName(Abc_ObjFanin0(pNode))) == sim_table.end()) {
+        for (int m = 0; m < temp1; m++) {
+          store_table[i] += "0";
+        }
+        continue;
+      }
+      Simulation * output = sim_table[Abc_ObjName(Abc_ObjFanin0(pNode))];
+      bool is_com = Abc_ObjFaninC(pNode,0);
+      
+      for (int m = temp1-1; m >= 0; m--) {
+        int temp = getNthBit(output->get_sim_pattern(), m);
+        if (temp == 0) {
+          if (is_com) {
+            store_table[i] += "1";
+          }
+          else {
+            store_table[i] += "0";
+          }
+        }
+        else {
+          if (is_com) {
+            store_table[i] += "0";
+          }
+          else {
+            store_table[i] += "1";
+          }
+        }
+      }
+    }
   }
 
   Abc_NtkForEachPo(pNtk, pNode, i){
-    Simulation * output = sim_table[Abc_ObjName(Abc_ObjFanin0(pNode))];
-    bool is_com = Abc_ObjFaninC(pNode,0);
-    
-    printf("%s: ", Abc_ObjName(pNode));
-    for (int m = count-1; m >= 0; m--) {
-      int temp = getNthBit(output->get_sim_pattern(), m);
-      if (temp == 0) {
-        if (is_com) {
-          printf("1");
-        }
-        else {
-          printf("0");
-        }
-      }
-      else {
-        if (is_com) {
-          printf("0");
-        }
-        else {
-          printf("1");
-        }
-      }
-    }
-    printf("\n");
+    printf("%s: %s\n", Abc_ObjName(pNode), store_table[i].c_str());
   }
 
   fclose(filePointer);
