@@ -1,5 +1,7 @@
 #include <string>
 #include <fstream>
+#include <vector>
+#include <climits>
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
@@ -14,13 +16,12 @@ static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 void printBits(unsigned int num, int size=32){
     unsigned int maxPow = 1<<(size-1);
     // printf("MAX POW : %u\n",maxPow);
-    int i=0;
-    for(;i<size;++i){
+    for(int i=0; i<size; ++i){
       // print last bit and shift left.
       printf("%u", !!(num&maxPow));
       num = num<<1;
     }
-    printf("\n");
+    // printf("\n");
 }
 
 void init(Abc_Frame_t* pAbc) {
@@ -265,93 +266,125 @@ usage:
     return 1;
 }
 
-void Lsv_AigSimulation ( Abc_Ntk_t * pNtk, Vec_Ptr_t *& vSimPatGrp, int lineCount ) {
-  int i=0, j=0;
+void Lsv_AigSimulation ( Abc_Ntk_t * pNtk, std::vector<std::vector<unsigned int>>& vSimPatGrp, int lineCount ) {
+  int i=0;
   Abc_Obj_t * pObj;
-  Vec_Ptr_t * vSimPat;
+  std::vector<unsigned int> temp;
+  std::vector<std::vector<unsigned int>> output(Abc_NtkPoNum(pNtk), temp);
 
-  Vec_PtrForEachEntry( Vec_Ptr_t *, vSimPatGrp, vSimPat, j) {
-    Abc_Print(1, "=== Group %d Simulation ===\n", j);
+    for( int j=0,N=vSimPatGrp.size(); j<N; ++j) {
 
-    // Assign value to PI
-    Abc_NtkForEachPi( pNtk, pObj, i ) {
-      pObj->pData = (void *)Vec_PtrEntry( vSimPat, i );
-      // printBits((size_t)pObj->pData);
-    }
+        std::vector<unsigned int> vSimPat = vSimPatGrp[j];
 
-    // Traverse AIG, run simulation
-    Abc_NtkForEachObj(pNtk, pObj, i) {
-        // skip PI/PO and const1/0s
-        if (Abc_ObjType(pObj) == ABC_OBJ_PI) continue;
-        if (Abc_ObjType(pObj) == ABC_OBJ_CONST1) {
-            pObj->pData = (void * )1;
-            continue;
+        // reset iTemp
+        Abc_NtkForEachObj(pNtk, pObj, i) {
+            pObj->iTemp = 0;
         }
-        if (Abc_ObjType(pObj) == ABC_OBJ_PO) {
-            // Abc_Print(1, "Obj %s | c0: %s\n", Abc_ObjName(pObj), Abc_ObjName(Abc_ObjFanin0(pObj)));
-            continue;
+        // Assign value to PI
+        Abc_NtkForEachPi( pNtk, pObj, i ) {
+            pObj->iTemp = (int)vSimPat[i];
         }
 
-        // Abc_Obj_t * pFanin;
-        // int j;
-        // Abc_Obj_t * Fanin0;
-        // Abc_Obj_t * Fanin1;
-        // Abc_ObjForEachFanin(pObj, pFanin, j) {
-        //   assert(j < 2);
-        //   // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //   //        Abc_ObjName(pFanin));
-        //   if (j == 0) {
-        //     Fanin0 = pFanin;
-        //     // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //     //      Abc_ObjName(Fanin0));
-        //   }
-        //   else if (j == 1){
-        //     Fanin1 = pFanin;
-        //     // printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-        //     //      Abc_ObjName(Fanin1));
-        //   }
-        // }
+        // Traverse AIG, run simulation
+        Abc_NtkForEachObj(pNtk, pObj, i) {
+            // skip PI/PO and const1/0s
+            if (Abc_ObjType(pObj) == ABC_OBJ_PI) continue;
+            if (Abc_ObjType(pObj) == ABC_OBJ_CONST1) {
+                pObj->iTemp = (int)UINT64_MAX;
+                continue;
+            }
+            if (Abc_ObjType(pObj) == ABC_OBJ_PO) {
+                // Abc_Print(1, "Obj %s | c0: %s\n", Abc_ObjName(pObj), Abc_ObjName(Abc_ObjFanin0(pObj)));
+                continue;
+            }
+            if (Abc_ObjType(pObj) != ABC_OBJ_NODE) continue;
 
-        Abc_Obj_t * Fanin0 = Abc_ObjFanin(pObj, 0);
-        Abc_Obj_t * Fanin1 = Abc_ObjFanin(pObj, 1);
+            // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
 
-        // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
 
-        // This print fails for some unknown reason.....
-        // Abc_Print(1, " | c0:%s, c1:%s\n", 
-        //           Abc_ObjName(Fanin0), 
-        //           Abc_ObjName(Fanin1));
+            // And-Inverter Simulation
+            Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+            Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
+            unsigned int a = (unsigned int)Fanin0->iTemp;
+            if (Abc_ObjFaninC0(pObj)) a ^= UINT64_MAX;
+            unsigned int b = (unsigned int)Fanin1->iTemp;
+            if (Abc_ObjFaninC1(pObj)) b ^= UINT64_MAX;
+            unsigned int data = a & b;
+            
+            pObj->iTemp = (int)data;
+            // Abc_Print(1, "Data: ");
+            // printBits(data);
+            // Abc_Print(1, "\n");
+        }
 
-        // Abc_Print(1, "%d, %d \n", Abc_ObjFaninC0(pObj), Abc_ObjFaninC1(pObj));
-        // Abc_Print(1, "sizeof(size_t): %d\n", sizeof(size_t) ); 
-        size_t data = Abc_ObjFaninC0(pObj) ? ~(size_t)Fanin0->pData : (size_t)Fanin0->pData;
-        data = Abc_ObjFaninC1(pObj) ? data & ~(size_t)Fanin1->pData 
-                                                  : data & (size_t)Fanin1->pData;
-        pObj->pData = (void *)data;
-        // printBits((size_t)pObj->pData);
+        // Print PO
+        Abc_NtkForEachPo(pNtk, pObj, i) {
+
+            unsigned int data;
+            if (Abc_ObjFaninNum(pObj) == 1) {
+                Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+                // Abc_Obj_t * Fanin1 = Abc_ObjChild1(pObj);
+                // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+                // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+                unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
+                if (Abc_ObjFaninC0(pObj)) 
+                    iTemp0 ^= UINT32_MAX;
+
+                data = iTemp0;
+            }
+            else {
+                Abc_Print(-1, "Error: Fanin of Po has problem.");
+            }
+            // else if (Abc_ObjFaninNum(pObj) > 1) {
+            //     Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
+            //     Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
+            //     Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
+            //     Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+            //     unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
+            //     if ( Abc_ObjFaninC0(pObj) ) 
+            //         iTemp0 ^= UINT32_MAX;
+            //     unsigned int iTemp1 = (unsigned int)Fanin1->iTemp;
+            //     if ( Abc_ObjFaninC1(pObj) ) 
+            //         iTemp1 ^= UINT32_MAX;
+
+            //     data = iTemp0 & iTemp1;
+            // }
+            // else {
+            //     Abc_Print(-1, "Error: Fanin of Po has problem.");
+            // }
+            // Abc_Print(1, "Po : %s | Child : %s\n", Abc_ObjName(pObj), Abc_ObjName(Fanin0));
+            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+
+            pObj->iTemp = (int)data; // Is this needed?
+
+            output[i].push_back(data);
+        }
     }
 
-    // Print PO
+    // Abc_NtkForEachObj(pNtk, pObj, i) {
+    //     Abc_Print(1, "%s : ", Abc_ObjName(pObj));
+    //     printBits((unsigned int)pObj->iTemp, 3);
+    //     Abc_Print(1, "\n");
+    // }
+
+    // Print
     Abc_NtkForEachPo(pNtk, pObj, i) {
         Abc_Print(1, "%s : ", Abc_ObjName(pObj));
-
-        Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
-        // Abc_Print(1, "Child :%s\n", Abc_ObjName(Fanin0));
-        size_t data = Abc_ObjFaninC0(Fanin0) ? ~(size_t)Fanin0->pData : (size_t)Fanin0->pData;
-        pObj->pData = (void *)data;
-
-        if (lineCount >= 32) {
-          printBits((size_t)pObj->pData);
+        int eachLine = lineCount;
+        for (auto& o : output[i]) {
+            if (eachLine >= 32) {
+                printBits(o, 32);
+            }
+            else {
+                printBits(o, eachLine);
+            }
+            eachLine -= 32;
         }
-        else {
-          printBits((size_t)pObj->pData, lineCount);
-        }
+        Abc_Print(1, "\n");
     }
-    lineCount -= 32;
-    
-  }
   
-  Abc_Print(1, "Done Simulation.\n");
+//   Abc_Print(1, "Done Simulation.\n");
   return;
 }
 
@@ -365,12 +398,15 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
 
     int n = Abc_NtkCiNum( pNtk );
-    Vec_Ptr_t * vSimPat = Vec_PtrStart( n );
-    Vec_PtrFill( vSimPat, n, 0 );
-    Vec_Ptr_t * vSimPatGrp = Vec_PtrAlloc( 0 );
-    std::ifstream infile;
-    std::string line;
-    int lineCount = 0;
+    // Simulation Pattern in one round
+    std::vector<unsigned int> vSimPat(n+1, 0);
+    // Simulation Patterns read from infile
+    std::vector<std::vector<unsigned int>> vSimPatGrp;
+
+    std::ifstream infile; // Read file ifstream
+    std::string line; // Read file buffer
+
+    int lineCount = 0; // Line count for output
 
     while ( ( c = Extra_UtilGetopt(argc, argv, "h" ) ) != EOF ) {
         switch (c) {
@@ -384,7 +420,7 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 
     // get input string
     char ** pArgvNew;
-    char * fileSim;
+    char * fileSim; // Name of infile
     int nArgcNew;
     pArgvNew = argv + globalUtilOptind;
     nArgcNew = argc - globalUtilOptind;
@@ -413,12 +449,17 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 
     // Abc_Print(1, "Reading file: %s\n", fileSim);
     while (std::getline(infile, line)) {
-        if (line.length() != n) {
+        if (line.length() == n + 1) {
+            if (line.back() == '\r') {
+                // Abc_Print(1, "Windows enter MDFK!\n");
+            } else return 1;
+        }
+        else if (line.length() != n) {
           Abc_Print( -1, "The length of simulation pattern is not equal to the number of inputs.\n" );
           return 1;
         }
         for (int j=0; j<n ;++j) {
-          size_t input = (size_t)Vec_PtrEntry( vSimPat, j );
+          unsigned int& input = vSimPat[j];
           if (line[j] == '0') {
             input = (input << 1) + 0;
           }
@@ -429,35 +470,42 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
             Abc_Print( -1, "The simulation pattern should be binary.\n" );
             return 1;
           }
-          Vec_PtrWriteEntry( vSimPat, j, (void *)input );
         }
         ++lineCount;
         if ( lineCount % 32 == 0 ) {
-            Vec_PtrPush( vSimPatGrp, vSimPat );
-            vSimPat = Vec_PtrStart( n );
-            // Vec_PtrClear( vSimPat );
-            Vec_PtrFill( vSimPat, n, 0 );
+            // put vSimPat into vSimPatGrp
+            vSimPatGrp.push_back(vSimPat);
+            // reset vSimPat
+            for( auto& a: vSimPat ) {
+                a = (int)0;
+            }
         }
     }
     infile.close();
 
+    // if remains unpush_back patterns
     if ( lineCount % 32 != 0 ) {
-        Vec_PtrPush( vSimPatGrp, vSimPat );
+        vSimPatGrp.push_back(vSimPat);
     }
 
-    Abc_Print(1, "Number of Simulation Groups: %d\n", Vec_PtrSize( vSimPatGrp ));
-    // vSimPat = (Vec_Ptr_t *)Vec_PtrEntry( vSimPatGrp, 0 );
-    // Abc_Print(1, "Sim Pattern Size: %d\n", Vec_PtrSize( vSimPat ));
-    // for (size_t i = 0; i < vSimPat->nSize; ++i){
-    //   printBits((size_t)Vec_PtrEntry( vSimPat, i ));
+    // Abc_Print(1, "Number of Simulation Groups: %d\n",vSimPatGrp.size() );
+    // for (auto& v: vSimPatGrp) {
+    //     for (auto& v1: v) {
+    //         printBits(v1, lineCount);
+    //         Abc_Print(1, "\n");
+    //     }
     // }
 
     // Abc_Print(1, "Start!\n");
 
     Lsv_AigSimulation( pNtk , vSimPatGrp, lineCount );
     
-    Vec_PtrReleaseArray( vSimPatGrp );
-    Vec_PtrErase( vSimPat );
+    // Clear All memory
+    for( auto& grp: vSimPatGrp ) {
+        grp.clear();
+    }
+    vSimPatGrp.clear();
+    vSimPat.clear();
 
     return 0;
 

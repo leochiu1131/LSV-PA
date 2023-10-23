@@ -1,0 +1,20 @@
+.model top
+.inputs a[2] a[1] a[0]
+.outputs asquared[0] asquared[1] asquared[2] asquared[3] asquared[4] \
+ asquared[5]
+.names a[0] asquared[0]
+1 1
+.names a[1] a[0] asquared[1]
+-- 0
+.names a[1] a[0] asquared[2]
+10 1
+.names a[2] a[1] a[0] asquared[3]
+011 1
+101 1
+.names a[2] a[1] a[0] asquared[4]
+100 1
+101 1
+111 1
+.names a[2] a[1] asquared[5]
+11 1
+.end

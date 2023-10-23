@@ -135,6 +135,11 @@ alias resyn2rs    "b; rs -K 6; rw; rs -K 6 -N 2; rf; rs -K 8; b; rs -K 8 -N 2; r
 alias r2rs        "b; rs -K 6; rw; rs -K 6 -N 2; rf; rs -K 8; b; rs -K 8 -N 2; rw; rs -K 10; rwz; rs -K 10 -N 2; b; rs -K 12; rfz; rs -K 12 -N 2; rwz; b"
 alias compress2rs "b -l; rs -K 6 -l; rw -l; rs -K 6 -N 2 -l; rf -l; rs -K 8 -l; b -l; rs -K 8 -N 2 -l; rw -l; rs -K 10 -l; rwz -l; rs -K 10 -N 2 -l; b -l; rs -K 12 -l; rfz -l; rs -K 12 -N 2 -l; rwz -l; b -l"
 alias c2rs        "b -l; rs -K 6 -l; rw -l; rs -K 6 -N 2 -l; rf -l; rs -K 8 -l; b -l; rs -K 8 -N 2 -l; rw -l; rs -K 10 -l; rwz -l; rs -K 10 -N 2 -l; b -l; rs -K 12 -l; rfz -l; rs -K 12 -N 2 -l; rwz -l; b -l"
+alias myCom       "read lsv/pa1/mul.blif; collapse; print_stats; lsv_sim_bdd 0110;"
+alias myCom2      "read lsv/pa1/mul.blif; strash; print_stats; lsv_sim_aig lsv/pa1/mul.in;"
+alias myCom3      "read lsv/example/full_adder.blif; strash; lsv_sim_aig lsv/example/fa.in;"
+alias myCom4      "read lsv/pa1/benchmarks/square.blif; strash; lsv_sim_aig lsv/pa1/benchmarks/square.in;"
+alias myCom5      "read lsv/pa1/square3.blif; strash; lsv_sim_aig lsv/pa1/square3.in;"
 
 # use this script to convert 1-valued and DC-valued flops for an AIG
 alias fix_aig     "logic; undc; strash; zero"
