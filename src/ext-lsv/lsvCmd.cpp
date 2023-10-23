@@ -15,13 +15,13 @@ using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t *pAbc, int argc, char **argv);
-static int Lsv_SimAig(Abc_Frame_t *pAbc, int argc, char **argv);
+static int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv);
 
 void init(Abc_Frame_t *pAbc)
 {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_SimAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
 }
 
 void destroy(Abc_Frame_t *pAbc) {}
@@ -124,97 +124,132 @@ usage:
   return 1;
 }
 
-std::vector<std::vector<bool>> ReadFile(const char *path)
+int setBit(int n, int bitPosition)
 {
-  std::vector<std::vector<bool>> result;
-
-  ifstream ifs(path);
-  if (!ifs)
-  {
-    cout << "error ee" << endl;
-    return result;
-  }
-
-  for (string line; getline(ifs, line);)
-  {
-    std::vector<bool> row;
-
-    for (auto c : line)
-    {
-      row.push_back(c - '0');
-    }
-    result.push_back(move(row));
-  }
-  return result;
+  return n | (1 << bitPosition);
 }
 
-std::vector<bool> BFS_Simulation(Abc_Ntk_t *pNtk, const std::vector<bool> &input)
+// Clear the k-th bit of n to 0.
+int clearBit(int n, int bitPosition)
 {
-  unordered_map<Abc_Obj_t *, bool> nodeValue;
-  queue<Abc_Obj_t *> q;
-
-  Abc_Obj_t *pObj;
-  int iObj = 0;
-  Abc_NtkForEachPi(pNtk, pObj, iObj)
-  {
-    nodeValue[pObj] = input[iObj];
-    q.push(pObj);
-  }
-
-  while (!q.empty())
-  {
-
-    auto currNode = q.front();
-    q.pop();
-
-    if (nodeValue.count(currNode) == 0)
-    {
-      if (nodeValue.count(Abc_ObjFanin0(currNode)) == 0 || nodeValue.count(Abc_ObjFanin1(currNode)) == 0)
-        continue;
-
-      bool input0 = (Abc_ObjFaninC0(currNode)) ? !nodeValue[Abc_ObjFanin0(currNode)] : nodeValue[Abc_ObjFanin0(currNode)];
-      bool input1 = (Abc_ObjFaninC1(currNode)) ? !nodeValue[Abc_ObjFanin1(currNode)] : nodeValue[Abc_ObjFanin1(currNode)];
-      nodeValue[currNode] = input0 & input1;
-    }
-
-    Abc_Obj_t *pFanout;
-    int i_tmp = 0;
-    Abc_ObjForEachFanout(currNode, pFanout, i_tmp)
-    {
-      q.push(pFanout);
-    }
-  }
-
-  std::vector<bool> output;
-  Abc_NtkForEachPo(pNtk, pObj, iObj)
-  {
-    bool ans = (Abc_ObjFaninC0(pObj)) ? !nodeValue[Abc_ObjFanin0(pObj)] : nodeValue[Abc_ObjFanin0(pObj)];
-    output.push_back(ans);
-  }
-  return output;
+  return n & ~(1 << bitPosition);
 }
 
-int Lsv_SimAig(Abc_Frame_t *pAbc, int argc, char **argv)
+// Simulate the network behavior based on the provided gate configurations.
+void simulate(Abc_Ntk_t *pNtk)
 {
-  auto inputVal = ReadFile(argv[1]);
+  int ithGate = 0;
+  Abc_Obj_t *gate = 0;
+  // Assuming 7 is a constant that refers to a specific type of gate.
+  const int TARGET_GATE_TYPE = 7;
 
+  Abc_NtkForEachObj(pNtk, gate, ithGate)
+  {
+    if (gate->Type == TARGET_GATE_TYPE)
+    {
+      // Use ternary operator for more concise assignment.
+      int fanin0 = gate->fCompl0 ? ~(Abc_ObjFanin0(gate)->iTemp) : Abc_ObjFanin0(gate)->iTemp;
+      int fanin1 = gate->fCompl1 ? ~(Abc_ObjFanin1(gate)->iTemp) : Abc_ObjFanin1(gate)->iTemp;
+      gate->iTemp = (fanin0 & fanin1);
+    }
+  }
+}
+
+int Lsv_CommandSimAig(Abc_Frame_t *pAbc, int argc, char **argv)
+{
+  if (argc != 2)
+  {
+    printf("Error: Invalid number of arguments.\n");
+    return 0;
+  }
   Abc_Ntk_t *pNtk = Abc_FrameReadNtk(pAbc);
-  std::vector<std::vector<bool>> outputVal;
-  for (const auto &input : inputVal)
+  if (!Abc_NtkIsStrash(pNtk))
   {
-    outputVal.push_back(BFS_Simulation(pNtk, input));
+    printf("Error: Please strash first.\n");
+    return 0;
+  }
+  FILE *fPtr = 0;
+  fPtr = fopen(argv[1], "r");
+  if (!fPtr)
+  {
+    printf("Error: Unable to open file.\n");
+    return 0;
   }
 
-  Abc_Obj_t *pObj;
-  int iObj = 0;
-  Abc_NtkForEachPo(pNtk, pObj, iObj)
+  int piNum = Abc_NtkPiNum(pNtk);
+  int poNum = Abc_NtkPoNum(pNtk);
+  long long maxPatternNum = 0, realPatternNum = 0;
+  for (char c = getc(fPtr); c != EOF; c = getc(fPtr))
+    if (c == '\n') // Increment count if this character is newline
+      maxPatternNum = maxPatternNum + 1;
+  fclose(fPtr);
+  bool poOutput[poNum][maxPatternNum] = {0};
+  char *pattern = (char *)malloc((piNum + 3) * sizeof(char));
+  int ithPi = 0, ithPo = 0, count = 0;
+  Abc_Obj_t *pPi = 0;
+  Abc_Obj_t *pPo = 0;
+
+  fPtr = fopen(argv[1], "r");
+  while (fgets(pattern, piNum + 3, fPtr))
   {
-    cout << Abc_ObjName(pObj) << ": ";
-    for (const auto &output : outputVal)
+    if (strlen(pattern) - 1 != piNum)
     {
-      cout << output[iObj];
+      // printf("len = %ld\n", strlen(pattern)-1);
+      printf("invalid pattern num\n");
+      return 0;
     }
-    cout << endl;
+    Abc_NtkForEachPi(pNtk, pPi, ithPi)
+    {
+      if (pattern[ithPi] == '0')
+        pPi->iTemp = clearBit(pPi->iTemp, count);
+      else if (pattern[ithPi] == '1')
+        pPi->iTemp = setBit(pPi->iTemp, count);
+      else
+      {
+        printf("invalid pattern!!!! \n");
+        printf("%s", pattern);
+        return 0;
+      }
+    }
+    realPatternNum++;
+    count++;
+    if (count == 32)
+    {
+      simulate(pNtk);
+      count = 0;
+      Abc_NtkForEachPo(pNtk, pPo, ithPo)
+      {
+        int simVal = pPo->fCompl0 == 1 ? ~(Abc_ObjFanin0(pPo)->iTemp) : Abc_ObjFanin0(pPo)->iTemp;
+        for (long long i = realPatternNum - 32, j = 0; i < realPatternNum; i++, j++)
+        {
+          poOutput[ithPo][i] = (simVal >> j) & 1;
+        }
+      }
+    }
   }
-  return 0;
+  if (count > 0 && count < 32)
+  {
+    simulate(pNtk);
+    Abc_NtkForEachPo(pNtk, pPo, ithPo)
+    {
+      int simVal = pPo->fCompl0 == 1 ? ~(Abc_ObjFanin0(pPo)->iTemp) : Abc_ObjFanin0(pPo)->iTemp;
+      for (long long i = realPatternNum - count, j = 0; i < realPatternNum; i++, j++)
+      {
+        poOutput[ithPo][i] = (simVal >> j) & 1;
+      }
+    }
+  }
+
+  Abc_NtkForEachPo(pNtk, pPo, ithPo)
+  {
+    printf("%s: ", Abc_ObjName(pPo));
+    for (int i = 0; i < realPatternNum; i++)
+    {
+      printf("%d", poOutput[ithPo][i]);
+    }
+    printf("\n");
+  }
+
+  fclose(fPtr);
+  return 1;
 }
