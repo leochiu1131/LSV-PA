@@ -7,9 +7,10 @@
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimbdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv);
-unsigned int simnode(Abc_Obj_t* anode, int* input);
+unsigned long long int simnode(Abc_Obj_t* anode, unsigned long long int* input, unsigned long long int const1,
+unsigned long long int* nodevalue, bool* nodedone);
 int Lsv_Simbdd(Abc_Ntk_t* pNtk, char* input);
-int Lsv_Simaig(Abc_Ntk_t* pNtk, int* input, int linenum);
+int Lsv_Simaig(Abc_Ntk_t* pNtk, unsigned long long int* input, int linenum, unsigned long long int const1);
 void writedd(DdNode* dd, char* filename, DdManager* manager){
   FILE *outfile;
   outfile = fopen(filename, "w");
@@ -20,8 +21,8 @@ void writedd(DdNode* dd, char* filename, DdManager* manager){
   fclose(outfile);
 }
 
-void printbinary(int num, int linenum){
-  int output[32];
+void printbinary(unsigned long long int num, int linenum){
+  int output[100];
   for(int i=0;i<linenum;i++){
     if(num%2 == 1) output[i] = 1;
     else output[i] = 0;
@@ -170,7 +171,8 @@ static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv){
   else{
     FILE * infile;
     char line[256];
-    int value[256]={0};
+    unsigned long long int value[256]={0};
+    unsigned long long int const1 = 0;
     int linenum = 0;
     infile = fopen(argv[1], "r");
     if(infile == NULL){
@@ -180,8 +182,10 @@ static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv){
     while(fgets(line, sizeof(line), infile)!=NULL){
       // printf("%s", line);
       linenum+=1;
+      const1 = const1*2+1;
       for(int i=0;line[i] == '0'||line[i] == '1';i++){
         value[i]*=2;
+        
         if(line[i] == '1'){
           value[i]+=1;
         }
@@ -195,17 +199,28 @@ static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv){
     // for(int i=0;value[i]!=0;i++){
     //   printf("%d\n", value[i]);
     // }
-    Lsv_Simaig(pNtk, value, linenum);
+    Lsv_Simaig(pNtk, value, linenum, const1);
   }
   return 0;
 }
 
-int Lsv_Simaig(Abc_Ntk_t* pNtk, int* input, int linenum){
+int Lsv_Simaig(Abc_Ntk_t* pNtk, unsigned long long int* input, int linenum, unsigned long long int const1){
   Abc_Obj_t* pPo;
   int ithPo;
+  Abc_Obj_t* pnode;
+  int ithnode;
+  unsigned long long int* nodevalue;
+  nodevalue = new unsigned long long int[Abc_NtkObjNum(pNtk)];
+  bool* nodedone;
+  nodedone = new bool[Abc_NtkObjNum(pNtk)];
+  for(int i=0;i<Abc_NtkObjNum(pNtk); i++){
+    nodedone[i] = false;
+  }
   Abc_NtkForEachPo(pNtk, pPo, ithPo){
+    // printf("success\n");
     printf("%s: ", Abc_ObjName(pPo));
-    unsigned int povalue = simnode(Abc_ObjFanin0(pPo), input);
+    unsigned long long int povalue = simnode(Abc_ObjFanin0(pPo), input, const1, nodevalue, nodedone);
+    // printf("simdone.\n");
     if(Abc_ObjFaninC0(pPo)) povalue = ~povalue;
     printbinary(povalue, linenum);
     printf("\n");
@@ -213,16 +228,37 @@ int Lsv_Simaig(Abc_Ntk_t* pNtk, int* input, int linenum){
   return 0;
 }
 
-unsigned int simnode(Abc_Obj_t* anode, int* input){
+unsigned long long int simnode(Abc_Obj_t* anode, unsigned long long int* input, unsigned long long int const1, 
+unsigned long long int* nodevalue, bool* nodedone){
+  if(nodedone[Abc_ObjId(anode)]){
+    return nodevalue[Abc_ObjId(anode)];
+  }
   if(Abc_ObjIsPi(anode)){
+    nodevalue[Abc_ObjId(anode)] = input[Abc_ObjId(anode)-1];
+    nodedone[Abc_ObjId(anode)] = true;
     return input[Abc_ObjId(anode)-1];
   }
   else if(Abc_ObjIsNode(anode)){
-    unsigned int fanin0 = simnode(Abc_ObjFanin0(anode), input);
-    unsigned int fanin1 = simnode(Abc_ObjFanin1(anode), input);
+    if(Abc_AigNodeIsConst(Abc_ObjFanin0(anode))){
+      unsigned long long int fanin1 = simnode(Abc_ObjFanin1(anode), input, const1, nodevalue, nodedone);
+      nodevalue[Abc_ObjId(anode)] = fanin1;
+      nodedone[Abc_ObjId(anode)] = true;
+      return fanin1;
+    }
+    else if(Abc_AigNodeIsConst(Abc_ObjFanin1(anode))){
+      unsigned long long int fanin0 = simnode(Abc_ObjFanin0(anode), input, const1, nodevalue, nodedone);
+      nodevalue[Abc_ObjId(anode)] = fanin0;
+      nodedone[Abc_ObjId(anode)] = true;
+      return fanin0;
+    }
+    unsigned long long int fanin0 = simnode(Abc_ObjFanin0(anode), input, const1, nodevalue, nodedone);
+    unsigned long long int fanin1 = simnode(Abc_ObjFanin1(anode), input, const1, nodevalue, nodedone);
     if(Abc_ObjFaninC0(anode)) fanin0 = ~fanin0;
     if(Abc_ObjFaninC1(anode)) fanin1 = ~fanin1;
-    unsigned int nodevalue = fanin0 & fanin1;
-    return nodevalue;
+    unsigned long long int nodevaluex = fanin0 & fanin1;
+    nodevalue[Abc_ObjId(anode)] = nodevaluex;
+    nodedone[Abc_ObjId(anode)] = true;
+    return nodevaluex;
   }
+  return const1;
 }
