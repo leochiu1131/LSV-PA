@@ -5,8 +5,15 @@
 #include <map>
 #include <string>
 #include <vector>
+// #include <iostream>
 
 using namespace std;
+
+#include "sat/cnf/cnf.h" 
+extern "C"{ 
+  Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
+
 
 class Simulation{
   public:
@@ -54,11 +61,15 @@ class Simulation{
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -134,28 +145,6 @@ void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* sim_pattern) {
     Cudd_Ref( pbAdds[i] );
   }
 
-  // pNode = Abc_ObjFanin0( Abc_NtkPo(pNtk, 0) );
-  // Abc_Obj_t * pObj;
-  // Abc_NtkForEachObj( pNtk, pObj, i ) {
-  //   printf("%s\n",Abc_ObjName(pObj));
-  // }
-
-  // Abc_NtkForEachPo(pNtk, pNode1, i){
-  //   printf("%s\n", Abc_ObjName(pNode1));
-  //   DdNode * output = (DdNode *)(Abc_ObjFanin0( pNode1 )->pData);
-  //   Cudd_PrintMinterm(dd, output);
-  // }
-  // Abc_NtkForEachPi(pNtk, pNode2, j) {
-  //   printf("%s: %c\n", Abc_ObjName(pNode2), sim_pattern[j]);
-
-  //   printf("%d\n",dd->invperm[j]);
-  //   DdNode* output = dd->vars[dd->invperm[j]];
-  //   Cudd_PrintMinterm(dd, output);
-  // }
-
-    // for ( i = 0; i < dd->size; i++ )
-    //     fprintf( pFile, "%d ", dd->invperm[i] );
-
   Abc_NtkForEachPo(pTemp, pNode1, i){
     DdNode* assignmentBDD = Cudd_ReadOne(dd); // Initialize to TRUE
     // Initialize a new BDD node to represent the assignment
@@ -164,9 +153,6 @@ void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* sim_pattern) {
     for (j = 0; j < dd->size; j++) {
       DdNode* varBDD = dd->vars[j]; // Get the BDD for the i-th variable
       DdNode* varAssignmentBDD = (sim_pattern[dd->invperm[j]] == '0') ? Cudd_Not(varBDD) : varBDD;
-      // printf("j: %d\n", j);
-      // printf("index: %d\n", dd->perm[j]);
-      // printf("%c", sim_pattern[dd->perm[j]]);
       assignmentBDD = Cudd_bddAnd(dd, assignmentBDD, varAssignmentBDD);
     }
     // printf("\n");
@@ -437,6 +423,195 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 usage:
   Abc_Print(-2, "usage: lsv_sim_aig <input file name> [-h]\n");
   Abc_Print(-2, "\t        print parallel output results when simulating the input pattern\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+bool Recur_get_diff_pattern(DdManager* dd, string& pattern1, string& pattern2, int cur_var, int num_var, DdNode* temp1, DdNode* temp2, int i, int j) {
+    if (cur_var == num_var) return true;
+    
+    if (cur_var == i) {
+      pattern1 += "0";
+      pattern2 += "1";
+      if (!Recur_get_diff_pattern(dd, pattern1, pattern2, cur_var+1, num_var, temp1, temp2, i, j)){
+        pattern1.erase(pattern1.size() - 1);
+        pattern2.erase(pattern2.size() - 1);
+        return false;
+      }
+      else 
+        return true;
+    }
+    else if (cur_var == j) {
+      pattern1 += "1";
+      pattern2 += "0";
+      if (!Recur_get_diff_pattern(dd, pattern1, pattern2, cur_var+1, num_var, temp1, temp2, i, j)){
+        pattern1.erase(pattern1.size() - 1);
+        pattern2.erase(pattern2.size() - 1);
+        return false;
+      }
+      else 
+        return true;
+    }
+    else {
+      DdNode* temp1_1 = Cudd_Cofactor( dd, temp1, dd->vars[cur_var] );
+      DdNode* temp2_1 = Cudd_Cofactor( dd, temp2, dd->vars[cur_var] );
+      Cudd_Ref(temp1_1);
+      Cudd_Ref(temp2_1);
+      if (temp1_1 == temp2_1) {
+        Cudd_RecursiveDeref(dd, temp1_1);
+        Cudd_RecursiveDeref(dd, temp2_1);
+        temp1_1 = Cudd_Cofactor( dd, temp1, Cudd_Not(dd->vars[cur_var]) );
+        temp2_1 = Cudd_Cofactor( dd, temp2, Cudd_Not(dd->vars[cur_var]) );
+
+      }
+    }
+}
+
+void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
+  DdManager* dd = (DdManager*) pNtk->pManFunc; //bdd manager
+  DdNode* temp1_3, * temp2_3;
+  int k = stoi(output);
+  int i = stoi(input1);
+  int j = stoi(input2);
+  Abc_Obj_t* Po = Abc_NtkPo(pNtk, k);
+  string pattern1, pattern2;
+  Abc_Obj_t* func = Abc_ObjFanin0(Po); //the original function
+  DdNode* temp1 = (DdNode*) func->pData;
+  Cudd_Ref(temp1);
+  DdNode* temp1_1 = Cudd_Cofactor( dd, temp1, Cudd_Not(dd->vars[i]) );
+  Cudd_Ref(temp1_1);
+  DdNode* temp1_2 = Cudd_Cofactor( dd, temp1_1, dd->vars[j] );
+  Cudd_Ref(temp1_2);
+  DdNode* temp2 = (DdNode*) func->pData;
+  Cudd_Ref(temp2);
+  DdNode* temp2_1 = Cudd_Cofactor( dd, temp2, dd->vars[i] );
+  Cudd_Ref(temp2_1);
+  DdNode* temp2_2 = Cudd_Cofactor( dd, temp2_1, Cudd_Not(dd->vars[j]) );
+  Cudd_Ref(temp2_2);
+  Cudd_RecursiveDeref(dd, temp1);
+  Cudd_RecursiveDeref(dd, temp1_1);
+  Cudd_RecursiveDeref(dd, temp2);
+  Cudd_RecursiveDeref(dd, temp2_1);
+  if (temp1_2 == temp2_2) {
+    printf("symmetric\n");
+    Cudd_RecursiveDeref(dd, temp1_2);
+    Cudd_RecursiveDeref(dd, temp2_2);
+  }
+  else {
+    // Recur_get_diff_pattern(dd, pattern1, pattern2, 0, Abc_NtkCiNum(pNtk), temp1_2, temp2_2, i, j);
+    for (int n = 0; n < Abc_NtkCiNum(pNtk); n++) {
+      if (n == i) {
+        pattern1 += "0";
+        pattern2 += "1";
+      }
+      else if (n == j) {
+        pattern1 += "1";
+        pattern2 += "0";
+      }
+      else {
+        temp1_3 = temp1_2;
+        temp2_3 = temp2_2;
+        temp1_2 = Cudd_Cofactor( dd, temp1_3, dd->vars[n] );
+        temp2_2 = Cudd_Cofactor( dd, temp2_3, dd->vars[n] );
+        Cudd_Ref(temp1_2);
+        Cudd_Ref(temp2_2);
+        if (temp1_2 == temp2_2) {
+          Cudd_RecursiveDeref(dd, temp1_2);
+          Cudd_RecursiveDeref(dd, temp2_2);
+          temp1_2 = Cudd_Cofactor( dd, temp1_3, Cudd_Not(dd->vars[n]) );
+          temp2_2 = Cudd_Cofactor( dd, temp2_3, Cudd_Not(dd->vars[n]) );
+          pattern1 += "0";
+          pattern2 += "0";
+        }
+        else {
+          pattern1 += "1";
+          pattern2 += "1";
+        }
+        Cudd_RecursiveDeref(dd, temp1_3);
+        Cudd_RecursiveDeref(dd, temp2_3);
+      }
+    }
+    printf("asymmetric\n");
+    printf("%s\n", pattern1.c_str());
+    printf("%s\n", pattern2.c_str());
+  }
+}
+
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_NtkSymBdd(pNtk, argv[1], argv[2], argv[3]);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_bdd <k> <i> <j> [-h]\n");
+  Abc_Print(-2, "\t        print whether the ith variable and jth variable are symmetric for kth output.\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+
+void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
+  // int k = stoi(output);
+  // int i = stoi(input1);
+  // int j = stoi(input2);
+  // int m;
+  // Abc_Obj_t* Po = Abc_NtkPo(pNtk, k);
+  // Abc_Ntk_t* output_cone = Abc_NtkCreateCone(pNtk, Po, Abc_ObjName(Po), 0);
+  // Aig_Man_t* aig_1 = Abc_NtkToDar(output_cone, 0, 0);
+  // sat_solver* solver = sat_solver_new();
+  // Cnf_Dat_t* cnf_1 =  Cnf_Derive(aig_1, 1);
+  // solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_1, 1, 0);
+  // Cnf_Dat_t* cnf_2 =  Cnf_DataDup(cnf_1);
+  // Cnf_DataLift(cnf_2, cnf_2->nVars * 3);
+  // solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_2, 1, 0);
+  // Abc_Obj_t* Pi = Abc_NtkPi(pNtk, i);
+  // Abc_Obj_t* Pj = Abc_NtkPi(pNtk, j);
+  // int var_1_i = cnf_1->pVarNums[Pi->Id];
+  // int var_1_j = cnf_1->pVarNums[Pj->Id];
+  // int var_2_i = cnf_2->pVarNums[Pi->Id];
+  // int var_2_j = cnf_2->pVarNums[Pj->Id];
+
+  
+}
+
+
+
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_NtkSymSat(pNtk, argv[1], argv[2], argv[3]);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_sat <k> <i> <j> [-h]\n");
+  Abc_Print(-2, "\t        print whether the ith variable and jth variable are symmetric for kth output.\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
