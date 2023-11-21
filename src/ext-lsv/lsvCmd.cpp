@@ -286,46 +286,46 @@ usage:
 //                     PA 2
 //================================================
 
-bool traverseBDD(DdNode *node, std::unordered_map<unsigned int, bool> &bddID2assignedValue) {
+bool traverseBDD(DdManager *dd, DdNode *node, std::unordered_map<unsigned int, bool> &bddID2assignedValue) {
     int varIndex = Cudd_NodeReadIndex(node);
-    // printf("var %d\n", varIndex);
 
     if ( Cudd_IsConstant(node) ) {
-        // printf("const %d\n", Cudd_IsComplement(node));
-        return Cudd_IsComplement(node);  // Return true if terminal node is 1
+        printf("const %d\n", node == Cudd_ReadOne(dd));
+        return node == Cudd_ReadOne(dd);  // Return true if terminal node is 1
     }
+
+    // printf("var %d\n", varIndex);
 
     DdNode *thenChild = Cudd_T(node);
     DdNode *elseChild = Cudd_E(node);
 
+    // printf("is complemented: %d\n", Cudd_IsComplement(node));
+
     // Try the high child first.
-    bddID2assignedValue[varIndex] = true;
-    // if ( Cudd_IsComplement(node) ? !traverseBDD(thenChild, bddID2assignedValue)
-    //     : traverseBDD(thenChild, bddID2assignedValue) ) {
+    bddID2assignedValue[varIndex] = ( Cudd_IsComplement(node) ) ? false : true;
+    // traverseBDD(dd, thenChild, bddID2assignedValue);
+    // if ( Cudd_IsComplement(node) ? !traverseBDD(dd, thenChild, bddID2assignedValue)
+    //     : traverseBDD(dd, thenChild, bddID2assignedValue) ) {
     //     return true;
     // }
 
-    // printf("is complemented: %d\n", Cudd_IsComplement(node));
-    if ( traverseBDD(thenChild, bddID2assignedValue) ) {
+
+    if ( traverseBDD(dd, thenChild, bddID2assignedValue) ) {
         return true;
     }
-    // else if ( !Cudd_IsComplement(node) && traverseBDD(thenChild, bddID2assignedValue) ) {
-    //     return true;
-    // }
 
     // printf("high child failed\n");
 
     // If the high child did not work, try the low child.
-    bddID2assignedValue[varIndex] = false;
-    if ( traverseBDD(elseChild, bddID2assignedValue) ) {
+    bddID2assignedValue[varIndex] = ( Cudd_IsComplement(node) ) ? true : false;
+    // traverseBDD(dd, elseChild, bddID2assignedValue);
+    // return true;
+    if ( traverseBDD(dd, elseChild, bddID2assignedValue) ) {
         return true;
     }
-    // else if ( !Cudd_IsComplement(node) && traverseBDD(elseChild, bddID2assignedValue) ) {
-    //     return true;
-    // }
-    // printf("low child failed\n");
-
     return false;
+
+    // return Cudd_IsComplement(node) ? !traverseBDD(dd, elseChild, bddID2assignedValue) : traverseBDD(dd, elseChild, bddID2assignedValue);
 }
 
 void write_dd(DdManager *gbm, DdNode *dd, char *filename)
@@ -343,9 +343,13 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     int i;
     Abc_Obj_t *pNode, *pFanin;
     DdManager *dd = ( DdManager * ) pNtk->pManFunc;
+    Abc_NtkForEachPo(pNtk, pNode, i) {
+        // printf("PO-%d: Id = %d, name = %s\n", i, Abc_ObjId(pNode), Abc_ObjName(pNode));
+    }
     pNode = Abc_ObjFanin0(Abc_NtkPo(pNtk, yk));
     int PINum = Abc_NtkPiNum(pNtk);
     std::vector<int> initPos2bddPos(PINum, -1);
+    std::vector<int> bddPos2initPos(PINum, -1);
     std::string initPos2PIName[PINum];
     std::unordered_map<std::string, int> PIName2initPos;
     std::unordered_map<std::string, int> PIName2bddPos;
@@ -353,6 +357,7 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     Abc_NtkForEachPi(pNtk, pFanin, i) {
         initPos2PIName[i] = Abc_ObjName(pFanin);
         PIName2initPos[Abc_ObjName(pFanin)] = i;
+        // printf("PI-%d: Id = %d, name = %s\n", i, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
     }
 
     Abc_ObjForEachFanin(pNode, pFanin, i) {
@@ -361,6 +366,8 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         int bddPos = i;
         int initPos = PIName2initPos[PIName];
         initPos2bddPos[initPos] = bddPos;
+        bddPos2initPos[bddPos] = initPos;
+        // printf("Fanin-%d: Id = %d, name = %s\n", i, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
     }
 
     int xi = initPos2bddPos[xi_pos];
@@ -387,38 +394,26 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNodeCofactor1, Cudd_Not(xjNode));
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNodeCofactor2, xjNode);
-        Cudd_Ref(funcNodeCofactor1);
-        Cudd_Ref(funcNodeCofactor2);
         is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else if ( xi == -1 && xj != -1 ) {
         xjNode = Cudd_bddIthVar(dd, xj);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xjNode);
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xjNode));
-        Cudd_Ref(funcNodeCofactor1);
-        Cudd_Ref(funcNodeCofactor2);
         is_symmetric = false;
     }
     else if ( xi != -1 && xj == -1 ) {
         xiNode = Cudd_bddIthVar(dd, xi);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xiNode);
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
-        Cudd_Ref(funcNodeCofactor1);
-        Cudd_Ref(funcNodeCofactor2);
         is_symmetric = false;
     }
     else {
         is_symmetric = true;
     }
-    
+
     if ( is_symmetric ) {
         printf("symmetric\n");
-        if ( funcNodeCofactor1 != nullptr ) {
-            Cudd_RecursiveDeref(dd, funcNodeCofactor1);
-        }
-        if ( funcNodeCofactor2 != nullptr ) {
-            Cudd_RecursiveDeref(dd, funcNodeCofactor2);
-        }
         return;
     }
     else {
@@ -426,30 +421,54 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     }
 
     // find counterexample
+    Cudd_Ref(funcNodeCofactor1);
+    Cudd_Ref(funcNodeCofactor2);
+
     std::unordered_map<unsigned int, bool> bddID2assignedValue;
 
     DdNode *diffNode = Cudd_bddXor(dd, funcNodeCofactor1, funcNodeCofactor2);
     Cudd_Ref(diffNode);
 
-    if ( traverseBDD(diffNode, bddID2assignedValue) ) {
+    if ( traverseBDD(dd, diffNode, bddID2assignedValue) ) {
         // printf("find counterexample\n");
         // print bddID2assignedValue
-        for ( auto it = bddID2assignedValue.begin(); it != bddID2assignedValue.end(); ++it ) {
-            printf("%d: %d\n", it->first, it->second);
-        }
+        // for ( std::unordered_map<unsigned int, bool>::iterator it = bddID2assignedValue.begin(); it != bddID2assignedValue.end(); ++it ) {
+        //     printf("%d: %d\n", it->first, it->second);
+        // }
+        std::string counterexampleBDD1(PINum, '0');
+        std::string counterexampleBDD2(PINum, '0');
         std::string counterexample1(PINum, '0');
         std::string counterexample2(PINum, '0');
 
-        for ( auto it = bddID2assignedValue.begin(); it != bddID2assignedValue.end(); ++it ) {
+        for ( std::unordered_map<unsigned int, bool>::iterator it = bddID2assignedValue.begin(); it != bddID2assignedValue.end(); ++it ) {
             if ( it->second ) {
-                counterexample1[it->first] = '1';
-                counterexample2[it->first] = '1';
+                counterexampleBDD1[it->first] = '1';
+                counterexampleBDD2[it->first] = '1';
             }
         }
-        counterexample1[xi_pos] = '1';
-        counterexample1[xj_pos] = '0';
-        counterexample2[xi_pos] = '0';
-        counterexample2[xj_pos] = '1';
+
+
+        for ( int pos = 0; pos < PINum; ++pos ) {
+            if ( pos == xi_pos ) {
+                counterexample1[pos] = '1';
+                counterexample2[pos] = '0';
+            }
+            else if ( pos == xj_pos ) {
+                counterexample1[pos] = '0';
+                counterexample2[pos] = '1';
+            }
+            else {
+                int bddPos = initPos2bddPos[pos];
+                if ( bddPos == -1 ) {
+                    counterexample1[pos] = '0';
+                    counterexample2[pos] = '0';
+                }
+                else {
+                    counterexample1[pos] = counterexampleBDD1[bddPos];
+                    counterexample2[pos] = counterexampleBDD2[bddPos];
+                }
+            }
+        }
         printf("%s\n", counterexample1.c_str());
         printf("%s\n", counterexample2.c_str());
     }
