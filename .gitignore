@@ -6,6 +6,8 @@ ReleaseLib/
 ReleaseExe/
 ReleaseExt/
 
+lsv/pa2/deno.blif
+
 _/
 _TEST/
 lib/abc*

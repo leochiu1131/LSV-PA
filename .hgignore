@@ -8,6 +8,8 @@ ReleaseLib/
 ReleaseExe/
 ReleaseExt/
 
+lsv/pa2/deno.blif
+
 _TEST/
 lib/abc*
 lib/m114*
