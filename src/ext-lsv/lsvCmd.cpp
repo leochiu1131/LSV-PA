@@ -3,21 +3,29 @@
 #include "base/main/mainInt.h"
 
 #include "bdd/extrab/extraBdd.h"
+#include "base/abc/abcShow.c"
+#include "sat/cnf/cnf.h"
 
 #include <unordered_map>
 #include <fstream>
 #include <vector>
 
+extern "C" {
+    Aig_Man_t *Abc_NtkToDar(Abc_Ntk_t *pNtk, int fExors, int fRegisters);
+}
+
 static int Lsv_CommandPrintNodes(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimulateBDD(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimulateAIG(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandCheckSymmetryBDD(Abc_Frame_t *pAbc, int argc, char **argv);
+static int Lsv_CommandCheckSymmetrySAT(Abc_Frame_t *pAbc, int argc, char **argv);
 
 void init(Abc_Frame_t *pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimulateBDD, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimulateAIG, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandCheckSymmetryBDD, 0);
+    Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandCheckSymmetrySAT, 0);
 }
 
 void destroy(Abc_Frame_t *pAbc) {}
@@ -531,6 +539,183 @@ int Lsv_CommandCheckSymmetryBDD(Abc_Frame_t *pAbc, int argc, char **argv) {
 usage:
     Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
     Abc_Print(-2, "\t        check bdd is symmetric or not\n");
+    Abc_Print(-2, "\t-h    : print the command usage\n");
+    return 1;
+}
+
+void printAIG(Aig_Man_t *pMan) {
+    int i;
+    Aig_Obj_t *pObj;
+
+    printf("Number of Nodes: %d\n", Aig_ManObjNum(pMan));
+
+    Aig_ManForEachObj(pMan, pObj, i) {
+        // Print information for each node, e.g., pObj->Type, fanins, etc.
+        printf("Node-%d: ID = %d\n", i, pObj->Id);
+        printf("PI: %d, PO: %d\n", Aig_ObjIsCi(pObj), Aig_ObjIsCo(pObj));
+        if ( Aig_ObjFanin0(pObj) ) {
+            printf("Fanin0: ID = %d\n", Aig_ObjFanin0(pObj)->Id);
+        }
+        if ( Aig_ObjFanin1(pObj) ) {
+            printf("Fanin1: ID = %d\n", Aig_ObjFanin1(pObj)->Id);
+        }
+        printf("\n");
+    }
+}
+
+void printCNF(Cnf_Dat_t *pCnf) {
+    printf("Number of variables: %d\n", pCnf->nVars);
+    for ( int i = 0; i < pCnf->nClauses; i++ ) {
+        int *pLit, *pStop;
+        for ( pLit = pCnf->pClauses[i], pStop = pCnf->pClauses[i + 1]; pLit < pStop; pLit++ )
+            printf("%d ", ( *pLit & 1 ) ? -( *pLit >> 1 ) : ( *pLit >> 1 ));
+
+        printf("\n");
+    }
+}
+
+void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
+    int i;
+    Abc_Obj_t *pObj;
+    printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
+    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 0);
+
+    char *xiName = Abc_ObjName(Abc_NtkPi(pNtk, xi_pos));
+    char *xjName = Abc_ObjName(Abc_NtkPi(pNtk, xj_pos));
+
+    Abc_Obj_t *pXi = nullptr;
+    Abc_Obj_t *pXj = nullptr;
+    Abc_Obj_t *pYk = Abc_ObjFanin0(Abc_NtkPo(pNtkTar, 0));
+
+    Abc_NtkForEachPi(pNtkTar, pObj, i) {
+        if ( strcmp(Abc_ObjName(pObj), xiName) == 0 ) {
+            pXi = pObj;
+        }
+        else if ( strcmp(Abc_ObjName(pObj), xjName) == 0 ) {
+            pXj = pObj;
+        }
+    }
+
+    Aig_Man_t *pMan = Abc_NtkToDar(pNtkTar, 0, 0);
+
+    Cnf_Dat_t *pCnf = Cnf_Derive(pMan, 1);
+
+    Cnf_Dat_t *pCnf2 = Cnf_Derive(pMan, 1);
+    Cnf_DataLift(pCnf2, pCnf->nVars);
+
+    sat_solver *pSat = sat_solver_new();
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf2, 1, 0);
+
+    //  (a == b) => (a + b') * (a' + b)
+    Abc_NtkForEachPi(pNtkTar, pObj, i) {
+        int Var1, Var2;
+
+        if ( pObj == pXi ) {
+            Var1 = pCnf->pVarNums[pXi->Id];
+            Var2 = pCnf->pVarNums[pXj->Id] + pCnf->nVars;
+        }
+        else if ( pObj == pXj ) {
+            Var1 = pCnf->pVarNums[pXj->Id];
+            Var2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars;
+        }
+        else {
+            Var1 = pCnf->pVarNums[pObj->Id];
+            Var2 = Var1 + pCnf->nVars;
+        }
+
+        lit Lits[2];
+
+        Lits[0] = toLitCond(Var1, 1);
+        Lits[1] = toLitCond(Var2, 0);
+        sat_solver_addclause(pSat, Lits, Lits + 2);
+
+        Lits[0] = toLitCond(Var1, 0);
+        Lits[1] = toLitCond(Var2, 1);
+        sat_solver_addclause(pSat, Lits, Lits + 2);
+    }
+
+    // Var(y1) xor Var(y2)
+    int VarY1 = pCnf->pVarNums[pYk->Id];
+    int VarY2 = VarY1 + pCnf->nVars;
+    int xorVar = sat_solver_addvar(pSat);
+    sat_solver_add_xor(pSat, xorVar, VarY1, VarY2, 0);
+    lit xorLit = toLitCond(xorVar, 0);
+    sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
+
+    int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+
+    if ( status == l_True ) {
+        printf("asymmetric\n");
+    }
+    else if ( status == l_False ) {
+        printf("symmetric\n");
+        return;
+    }
+    
+    // printCNF(pCnf);
+    // printCNF(pCnf2);
+
+    // Abc_NtkForEachObj(pNtkTar, pObj, i) {
+    //     printf("Obj-%d: SAT ID = %d, name = %s\n", i, pCnf->pVarNums[pObj->Id], Abc_ObjName(pObj));
+    // }
+
+    // for ( int i = 0; i < sat_solver_nvars(pSat); ++i ) {
+    //     printf("%d: %d\n", i, sat_solver_var_value(pSat, i));
+    // }
+
+    // Abc_NtkShow(pNtkTar, 0, 0, 1, 0);
+    // printf("Number of variables: %d\n", sat_solver_nvars(pSat));
+    // printf("Number of clauses: %d\n", sat_solver_nclauses(pSat));
+
+    // printf("%s\n", pMan->pName);
+}
+
+int Lsv_CommandCheckSymmetrySAT(Abc_Frame_t *pAbc, int argc, char **argv) {
+    Abc_Ntk_t *pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+    int yk = 0, xi = 0, xj = 0;
+    int i;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt(argc, argv, "h") ) != EOF ) {
+        switch ( c ) {
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( !pNtk ) {
+        Abc_Print(-1, "Empty network.\n");
+        return 1;
+    }
+    if ( argc != 4 ) {
+        Abc_Print(-1, "Wrong argument format.\n");
+        return 1;
+    }
+
+    // extract yk, xi, xj from arguments
+    i = 0;
+    while ( argv[1][i] != '\0' ) {
+        yk = yk * 10 + ( argv[1][i] - 48 );
+        ++i;
+    }
+    i = 0;
+    while ( argv[2][i] != '\0' ) {
+        xi = xi * 10 + ( argv[2][i] - 48 );
+        ++i;
+    }
+    i = 0;
+    while ( argv[3][i] != '\0' ) {
+        xj = xj * 10 + ( argv[3][i] - 48 );
+        ++i;
+    }
+    Lsv_CheckSymmetrySAT(pNtk, yk, xi, xj);
+    return 0;
+
+usage:
+    Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
+    Abc_Print(-2, "\t        check aig is symmetric or not\n");
     Abc_Print(-2, "\t-h    : print the command usage\n");
     return 1;
 }
