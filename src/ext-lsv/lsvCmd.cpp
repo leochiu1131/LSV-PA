@@ -63,6 +63,7 @@ static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
@@ -70,6 +71,7 @@ void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -596,7 +598,6 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
   Cnf_Dat_t* cnf_1 =  Cnf_Derive(aig_1, 1);
   Cnf_Dat_t* cnf_2 =  Cnf_Derive(aig_1, 1);
   Cnf_DataLift(cnf_2, cnf_2->nVars);
-  printf("vars1: %d\n", cnf_1->nVars);
   // printf("vars2: %d\n", cnf_2->nVars);
   solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_1, 1, 0);
   solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_2, 1, 0);
@@ -682,10 +683,6 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
   else if (status == -1) {
     printf("symmetric\n");
   }
-
-
-
-  
 }
 
 
@@ -707,6 +704,132 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 1;
   }
   Lsv_NtkSymSat(pNtk, argv[1], argv[2], argv[3]);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_sat <k> <i> <j> [-h]\n");
+  Abc_Print(-2, "\t        print whether the ith variable and jth variable are symmetric for kth output.\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, char* output) {
+  int k = stoi(output);
+  int m;
+  int n;
+  Abc_Obj_t* Po = Abc_NtkPo(pNtk, k);
+  Abc_Obj_t* Po_node = Abc_ObjFanin0(Po);
+  Abc_Ntk_t* output_cone = Abc_NtkCreateCone(pNtk, Po_node, Abc_ObjName(Po), 1);
+  Vec_Ptr_t * vNodes;
+  Aig_Man_t* aig_1 = Abc_NtkToDar(output_cone, 0, 0);
+  sat_solver* solver = sat_solver_new();
+  Cnf_Dat_t* cnf_1 =  Cnf_Derive(aig_1, 1);
+  Cnf_Dat_t* cnf_2 =  Cnf_Derive(aig_1, 1);
+  Cnf_DataLift(cnf_2, cnf_2->nVars);
+  printf("vars: %d\n", cnf_1->nVars);
+  solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_1, 1, 0);
+  solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_2, 1, 0);
+  int* enable_arr = new int[Abc_NtkCiNum(pNtk)];
+  int* enable_lit_arr = new int[Abc_NtkCiNum(pNtk)];
+  for (int i = 0; i < Abc_NtkCiNum(pNtk); i++) {
+    enable_arr[i] = sat_solver_addvar(solver);
+  }
+  Aig_Obj_t* Pi;
+  Aig_Obj_t* Pj;
+  Aig_Obj_t* Pk;
+  Aig_ManForEachCi(aig_1, Pi, m) {
+    int array[] = {toLitCond(cnf_1->pVarNums[Pi->Id], 1), toLitCond(cnf_2->pVarNums[Pi->Id], 0), toLitCond(enable_arr[m], 0)};
+    int array1[] = {toLitCond(cnf_1->pVarNums[Pi->Id], 0), toLitCond(cnf_2->pVarNums[Pi->Id], 1), toLitCond(enable_arr[m], 0)};
+    sat_solver_addclause(solver, array, array + sizeof(array) / sizeof(int));
+    sat_solver_addclause(solver, array1, array1 + sizeof(array1) / sizeof(int));
+  }
+  Pk = Aig_ManCo(aig_1, 0);
+  vNodes = Aig_ManDfsNodes(aig_1, &Pk, 1);
+  Aig_ManForEachCi(aig_1, Pi, m) {
+    if (m == (Abc_NtkCiNum(pNtk) - 1)) break;
+    Aig_ManForEachCi(aig_1, Pj, n) {
+      if (n <= m) continue;
+      int array[] = {toLitCond(cnf_1->pVarNums[Pi->Id], 1), toLitCond(cnf_2->pVarNums[Pj->Id], 0), toLitCond(enable_arr[m], 1), toLitCond(enable_arr[n], 1)};
+      int array1[] = {toLitCond(cnf_1->pVarNums[Pi->Id], 0), toLitCond(cnf_2->pVarNums[Pj->Id], 1), toLitCond(enable_arr[m], 1), toLitCond(enable_arr[n], 1)};    
+      sat_solver_addclause(solver, array, array + sizeof(array) / sizeof(int));
+      sat_solver_addclause(solver, array1, array1 + sizeof(array1) / sizeof(int));
+      int array2[] = {toLitCond(cnf_1->pVarNums[Pj->Id], 1), toLitCond(cnf_2->pVarNums[Pi->Id], 0), toLitCond(enable_arr[m], 1), toLitCond(enable_arr[n], 1)};
+      int array3[] = {toLitCond(cnf_1->pVarNums[Pj->Id], 0), toLitCond(cnf_2->pVarNums[Pi->Id], 1), toLitCond(enable_arr[m], 1), toLitCond(enable_arr[n], 1)};
+      sat_solver_addclause(solver, array2, array2 + sizeof(array2) / sizeof(int));
+      sat_solver_addclause(solver, array3, array3 + sizeof(array3) / sizeof(int));
+    }
+  }
+  int miter = sat_solver_addvar(solver);
+  int array4[] = {toLitCond(cnf_1->pVarNums[Pk->Id], 1), toLitCond(cnf_2->pVarNums[Pk->Id], 0), toLitCond(miter, 0)};
+  int array5[] = {toLitCond(cnf_1->pVarNums[Pk->Id], 0), toLitCond(cnf_2->pVarNums[Pk->Id], 1), toLitCond(miter, 0)};
+  int array6[] = {toLitCond(cnf_1->pVarNums[Pk->Id], 0), toLitCond(cnf_2->pVarNums[Pk->Id], 0), toLitCond(miter, 1)};
+  int array7[] = {toLitCond(cnf_1->pVarNums[Pk->Id], 1), toLitCond(cnf_2->pVarNums[Pk->Id], 1), toLitCond(miter, 1)};
+  int array8[] = {toLit(miter)};
+  sat_solver_addclause(solver, array4, array4 + sizeof(array4) / sizeof(int));
+  sat_solver_addclause(solver, array5, array5 + sizeof(array5) / sizeof(int));
+  sat_solver_addclause(solver, array6, array6 + sizeof(array6) / sizeof(int));
+  sat_solver_addclause(solver, array7, array7 + sizeof(array7) / sizeof(int));
+  sat_solver_addclause(solver, array8, array8 + sizeof(array8) / sizeof(int));
+
+  for (int i = 0; i < Abc_NtkCiNum(pNtk)-1; i++) {
+    bool mark_i = false;
+    Pi = Aig_ManCi(aig_1, i);
+    for (int j = i+1; j < Abc_NtkCiNum(pNtk); j++) {
+      bool mark_j = false;
+      Pj = Aig_ManCi(aig_1, j);
+      Aig_Obj_t* pObj;
+      Vec_PtrForEachEntry( Aig_Obj_t *, vNodes, pObj, m ) {
+        if (Pi == pObj) mark_i = true;
+        if (Pj == pObj) mark_j = true;
+      }
+
+
+      if (mark_i && mark_j) {
+        for (int temp = 0; temp < Abc_NtkCiNum(pNtk); temp++) {
+          if (temp == i) {
+            sat_solver_push(solver, toLitCond(enable_arr[temp], 0));
+          }
+          else if (temp == j) {
+            sat_solver_push(solver, toLitCond(enable_arr[temp], 0));
+          }
+          else {
+            sat_solver_push(solver, toLitCond(enable_arr[temp], 1));
+          }
+        }
+        int status = sat_solver_solve_internal(solver);
+        if (status == -1) {
+          printf("%d %d\n", i, j);
+        }
+
+        for (int temp = 0; temp < Abc_NtkCiNum(pNtk); temp++) {
+          sat_solver_pop(solver);
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_NtkSymAll(pNtk, argv[1]);
   return 0;
 
 usage:
