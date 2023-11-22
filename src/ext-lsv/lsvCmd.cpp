@@ -3,6 +3,7 @@
 #include "base/main/mainInt.h"
 //add library for problem 4.1 and 4.2
 #include <string>
+#include <vector>
 #include <iostream>
 #include <fstream>
 #include "sat/cnf/cnf.h"
@@ -13,15 +14,17 @@ extern "C" {
 using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
-//add function for problem 4.1 and 4.2
+//add function for problem 2.1 and 2.2 and 2.3
 static int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymALL(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
-    //add command for problem 4.1 and 4.2
+    //add command for problem 2.1 and 2.2 and 2.3
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBDD, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSAT, 0);
+    Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymALL, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -75,7 +78,7 @@ usage:
   return 1;
 }
 
-// problem 4.1 procedure part
+// problem 2.1 procedure part
 void Lsv_NtkSymBDD(Abc_Ntk_t* pNtk, int k, int i, int j) {
     if (i == j) {
         printf("symmetric\n");
@@ -396,7 +399,7 @@ int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 0;
 }
 
-// problem 4.2 procedure part
+// problem 2.2 procedure part
 void Lsv_NtkSymSAT(Abc_Ntk_t* pNtk, int k, int i, int j) {
     if (i == j) {
         printf("symmetric\n");
@@ -433,44 +436,52 @@ void Lsv_NtkSymSAT(Abc_Ntk_t* pNtk, int k, int i, int j) {
         }
         Abc_NtkForEachPi(pNtk, pObj, i_Pi) {
             if (i_Pi == i) {
-                lit cls_1_0 = toLitCond(idx_to_var1[i], 0);
-                lit cls_1_1 = toLitCond(idx_to_var2[j], 1);
-                sat_solver_addclause(sym_sat, &cls_1_0, &cls_1_1 + 1);
-                lit cls_2_0 = toLitCond(idx_to_var2[j], 0);
-                lit cls_2_1 = toLitCond(idx_to_var1[i], 1);
-                sat_solver_addclause(sym_sat, &cls_2_0, &cls_2_1 + 1);
+                lit cls_1[2];
+                cls_1[0] = toLitCond(idx_to_var1[i], 0);
+                cls_1[1] = toLitCond(idx_to_var2[j], 1);
+                sat_solver_addclause(sym_sat, cls_1, cls_1 + 2);
+                lit cls_2[2];
+                cls_2[0] = toLitCond(idx_to_var1[i], 1);
+                cls_2[1] = toLitCond(idx_to_var2[j], 0);
+                sat_solver_addclause(sym_sat, cls_2, cls_2 + 2);
             }
             else if (i_Pi == j) {
-                lit cls_1_0 = toLitCond(idx_to_var1[j], 0);
-                lit cls_1_1 = toLitCond(idx_to_var2[i], 1);
-                sat_solver_addclause(sym_sat, &cls_1_0, &cls_1_1 + 1);
-                lit cls_2_0 = toLitCond(idx_to_var2[i], 0);
-                lit cls_2_1 = toLitCond(idx_to_var1[j], 1);
-                sat_solver_addclause(sym_sat, &cls_2_0, &cls_2_1 + 1);
+                lit cls_1[2];
+                cls_1[0] = toLitCond(idx_to_var1[j], 0);
+                cls_1[1] = toLitCond(idx_to_var2[i], 1);
+                sat_solver_addclause(sym_sat, cls_1, cls_1 + 2);
+                lit cls_2[2];
+                cls_2[0] = toLitCond(idx_to_var1[j], 1);
+                cls_2[1] = toLitCond(idx_to_var2[i], 0);
+                sat_solver_addclause(sym_sat, cls_2, cls_2 + 2);
             }
             else {
-                lit cls_1_0 = toLitCond(idx_to_var1[i_Pi], 0);
-                lit cls_1_1 = toLitCond(idx_to_var2[i_Pi], 1);
-                sat_solver_addclause(sym_sat, &cls_1_0, &cls_1_1 + 1);
-                lit cls_2_0 = toLitCond(idx_to_var2[i_Pi], 0);
-                lit cls_2_1 = toLitCond(idx_to_var1[i_Pi], 1);
-                sat_solver_addclause(sym_sat, &cls_2_0, &cls_2_1 + 1);
+                lit cls_1[2];
+                cls_1[0] = toLitCond(idx_to_var1[i_Pi], 0);
+                cls_1[1] = toLitCond(idx_to_var2[i_Pi], 1);
+                sat_solver_addclause(sym_sat, cls_1, cls_1 + 2);
+                lit cls_2[2];
+                cls_2[0] = toLitCond(idx_to_var1[i_Pi], 1);
+                cls_2[1] = toLitCond(idx_to_var2[i_Pi], 0);
+                sat_solver_addclause(sym_sat, cls_2, cls_2 + 2);
             }
         }
-        
+
         int po_cone_id = Abc_ObjFanin0(Abc_NtkPo(y_cone, 0))->Id;
         int y_var1 = sym_sat_cnf_1->pVarNums[po_cone_id];
         int y_var2 = sym_sat_cnf_2->pVarNums[po_cone_id];
         //cout << "cnf1: " << y_var1 << " at " << po_cone_id << " when " << k << endl;
         //cout << "cnf2: " << y_var2 << " at " << po_cone_id << " when " << k << endl;
-        lit cls_3_0 = toLitCond(y_var1, 0);
-        lit cls_3_1 = toLitCond(y_var2, 0);
-        sat_solver_addclause(sym_sat, &cls_3_0, &cls_3_1 + 1);
-        lit cls_4_0 = toLitCond(y_var1, 1);
-        lit cls_4_1 = toLitCond(y_var2, 1);
-        sat_solver_addclause(sym_sat, &cls_4_0, &cls_4_1 + 1);
-        
-        int is_sym = sat_solver_solve(sym_sat, &cls_4_0, &cls_4_0, 0, 0, 0, 0);
+        lit cls_y_1[2];
+        cls_y_1[0] = toLitCond(y_var1, 0);
+        cls_y_1[1] = toLitCond(y_var2, 0);
+        sat_solver_addclause(sym_sat, cls_y_1, cls_y_1 + 2);
+        lit cls_y_2[2];
+        cls_y_2[0] = toLitCond(y_var1, 1);
+        cls_y_2[1] = toLitCond(y_var2, 1);
+        sat_solver_addclause(sym_sat, cls_y_2, cls_y_2 + 2);
+
+        int is_sym = sat_solver_solve(sym_sat, cls_y_1, cls_y_1, 0, 0, 0, 0);
         //cout << "result: " << is_sym << endl;
 
         if (is_sym == -1) {
@@ -537,6 +548,188 @@ int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv) {
     if (Abc_NtkIsStrash(pNtk)) {
         if (legal_input) {
             Lsv_NtkSymSAT(pNtk, input_idx[0], input_idx[1], input_idx[2]);
+        }
+        else {
+            printf("illegal input.\n");
+        }
+    }
+    else {
+        printf("Not strash now.\n");
+    }
+
+    return 0;
+}
+
+// problem 2.3 procedure part
+void Lsv_NtkSymALL(Abc_Ntk_t* pNtk, int k) {
+    Abc_Obj_t* pObj_k = Abc_NtkPo(pNtk, k);
+
+    Abc_Ntk_t* y_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pObj_k), Abc_ObjName(pObj_k), 1);
+    Aig_Man_t* y_sat = Abc_NtkToDar(y_cone, 0, 0);
+
+    sat_solver* sym_sat = sat_solver_new();
+    Cnf_Dat_t* sym_sat_cnf_1 = Cnf_Derive(y_sat, 1);
+    Cnf_DataWriteIntoSolverInt(sym_sat, sym_sat_cnf_1, 1, 0);
+    Cnf_Dat_t* sym_sat_cnf_2 = Cnf_Derive(y_sat, 1);
+    Cnf_DataLift(sym_sat_cnf_2, Abc_ObjFanin0(Abc_NtkPo(y_cone, 0))->Id);
+    Cnf_DataWriteIntoSolverInt(sym_sat, sym_sat_cnf_2, 1, 0);
+
+    Abc_Obj_t* pObj;
+    int i_Pi;
+    int idx_to_var1[Abc_NtkPiNum(pNtk)];
+    int idx_to_var2[Abc_NtkPiNum(pNtk)];
+    Abc_NtkForEachPi(pNtk, pObj, i_Pi) {
+        idx_to_var1[i_Pi] = sym_sat_cnf_1->pVarNums[pObj->Id];
+        idx_to_var2[i_Pi] = sym_sat_cnf_2->pVarNums[pObj->Id];
+    }
+    int idx_to_var3[Abc_NtkPiNum(pNtk)];
+    Abc_NtkForEachPi(pNtk, pObj, i_Pi) {
+        idx_to_var3[i_Pi] = sat_solver_addvar(sym_sat);
+    }
+    Abc_NtkForEachPi(pNtk, pObj, i_Pi) { //add clause of equal
+        lit cls_1[3];
+        cls_1[0] = toLitCond(idx_to_var1[i_Pi], 0);
+        cls_1[1] = toLitCond(idx_to_var2[i_Pi], 1);
+        cls_1[2] = toLitCond(idx_to_var3[i_Pi], 0);
+        sat_solver_addclause(sym_sat, cls_1, cls_1 + 3);
+        lit cls_2[3];
+        cls_2[0] = toLitCond(idx_to_var1[i_Pi], 1);
+        cls_2[1] = toLitCond(idx_to_var2[i_Pi], 0);
+        cls_2[2] = toLitCond(idx_to_var3[i_Pi], 0);
+        sat_solver_addclause(sym_sat, cls_2, cls_2 + 3);
+    }
+    Abc_NtkForEachPi(pNtk, pObj, i_Pi) { //add clause of swap
+        for (int j = i_Pi + 1; j < Abc_NtkPiNum(pNtk); j++) {
+            lit cls_1[4];
+            cls_1[0] = toLitCond(idx_to_var1[i_Pi], 0);
+            cls_1[1] = toLitCond(idx_to_var2[j], 1);
+            cls_1[2] = toLitCond(idx_to_var3[i_Pi], 1);
+            cls_1[3] = toLitCond(idx_to_var3[j], 1);
+            sat_solver_addclause(sym_sat, cls_1, cls_1 + 4);
+            lit cls_2[4];
+            cls_2[0] = toLitCond(idx_to_var1[i_Pi], 1);
+            cls_2[1] = toLitCond(idx_to_var2[j], 0);
+            cls_2[2] = toLitCond(idx_to_var3[i_Pi], 1);
+            cls_2[3] = toLitCond(idx_to_var3[j], 1);
+            sat_solver_addclause(sym_sat, cls_2, cls_2 + 4);
+            lit cls_3[4];
+            cls_3[0] = toLitCond(idx_to_var1[j], 0);
+            cls_3[1] = toLitCond(idx_to_var2[i_Pi], 1);
+            cls_3[2] = toLitCond(idx_to_var3[i_Pi], 1);
+            cls_3[3] = toLitCond(idx_to_var3[j], 1);
+            sat_solver_addclause(sym_sat, cls_3, cls_3 + 4);
+            lit cls_4[4];
+            cls_4[0] = toLitCond(idx_to_var1[j], 1);
+            cls_4[1] = toLitCond(idx_to_var2[i_Pi], 0);
+            cls_4[2] = toLitCond(idx_to_var3[i_Pi], 1);
+            cls_4[3] = toLitCond(idx_to_var3[j], 1);
+            sat_solver_addclause(sym_sat, cls_4, cls_4 + 4);
+        }
+    }
+
+    int po_cone_id = Abc_ObjFanin0(Abc_NtkPo(y_cone, 0))->Id;
+    int y_var1 = sym_sat_cnf_1->pVarNums[po_cone_id];
+    int y_var2 = sym_sat_cnf_2->pVarNums[po_cone_id];
+    lit cls_y_1[2];
+    cls_y_1[0] = toLitCond(y_var1, 0);
+    cls_y_1[1] = toLitCond(y_var2, 0);
+    sat_solver_addclause(sym_sat, cls_y_1, cls_y_1 + 2);
+    lit cls_y_2[2];
+    cls_y_2[0] = toLitCond(y_var1, 1);
+    cls_y_2[1] = toLitCond(y_var2, 1);
+    sat_solver_addclause(sym_sat, cls_y_2, cls_y_2 + 2);
+
+    vector<bool> shall_check_list;
+    for (int i = 0; i < Abc_NtkPiNum(pNtk); i++) {
+        shall_check_list.push_back(true);
+    }
+
+    vector<vector<int> > all_sym_circle;
+    int idx_place[Abc_NtkPiNum(pNtk)];
+    int idx_place2[Abc_NtkPiNum(pNtk)];
+
+    for (int i = 0; i < Abc_NtkPiNum(pNtk); i++) {
+        if (shall_check_list[i]) {
+            vector<int> temp_sym_circle = { i };
+            idx_place[i] = all_sym_circle.size();
+            idx_place2[i] = 0;
+            for (int j = i + 1; j < Abc_NtkPiNum(pNtk); j++) {
+                if (shall_check_list[j]) {
+                    lit cls_assum[Abc_NtkPiNum(pNtk)];
+                    Abc_NtkForEachPi(pNtk, pObj, i_Pi) {
+                        if (i_Pi == i) {
+                            cls_assum[i_Pi] = toLitCond(idx_to_var3[i_Pi], 0);
+                        }
+                        else if (i_Pi == j) {
+                            cls_assum[i_Pi] = toLitCond(idx_to_var3[i_Pi], 0);
+                        }
+                        else {
+                            cls_assum[i_Pi] = toLitCond(idx_to_var3[i_Pi], 1);
+                        }
+                    }
+                    int is_sym = sat_solver_solve(sym_sat, cls_assum, cls_assum + Abc_NtkPiNum(pNtk), 0, 0, 0, 0);
+
+                    if (is_sym == -1) {
+                        idx_place[j] = all_sym_circle.size();
+                        idx_place2[j] = temp_sym_circle.size();
+                        temp_sym_circle.push_back(j);
+                        shall_check_list[j] = false;
+                    }
+                }
+            }
+            all_sym_circle.push_back(temp_sym_circle);
+        }
+        shall_check_list[i] = false;
+    }
+
+    for (int i = 0; i < Abc_NtkPiNum(pNtk); i++) {
+        int p = all_sym_circle[idx_place[i]][idx_place2[i]];
+        for (unsigned int q = idx_place2[i] + 1; q < all_sym_circle[idx_place[i]].size(); q++) {
+            cout << p << " " << all_sym_circle[idx_place[i]][q] << endl;
+        }
+    }
+
+    /*for (unsigned int p = 0; p < all_sym_circle.size(); p++) {
+        for (unsigned int q = 0; q < all_sym_circle[p].size(); q++) {
+            for (unsigned int r = q + 1; r < all_sym_circle[p].size(); r++) {
+                cout << all_sym_circle[p][q] << " " << all_sym_circle[p][r] << endl;
+            }
+        }
+    }*/
+}
+
+int Lsv_CommandSymALL(Abc_Frame_t* pAbc, int argc, char** argv) {
+    Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!pNtk) {
+        Abc_Print(-1, "Empty network.\n");
+        return 1;
+    }
+
+    int input_idx = 0;
+    bool legal_input = false;
+    if (argc == 2) {
+        legal_input = true;
+        std::string origin_input = argv[1];
+        for (int j = 0; j < origin_input.size(); j++) {
+            bool legal_input_temp = false;
+            if (origin_input[j] >= '0') {
+                if (origin_input[j] <= '9') {
+                    legal_input_temp = true;
+                }
+            }
+            legal_input = legal_input && legal_input_temp;
+            if (legal_input_temp) {
+                input_idx = stoi(origin_input);
+            }
+        }
+        if (Abc_NtkPoNum(pNtk) <= input_idx) {
+            legal_input = false;
+        }
+    }
+
+    if (Abc_NtkIsStrash(pNtk)) {
+        if (legal_input) {
+            Lsv_NtkSymALL(pNtk, input_idx);
         }
         else {
             printf("illegal input.\n");
