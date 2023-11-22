@@ -8,7 +8,7 @@ ReleaseLib/
 ReleaseExe/
 ReleaseExt/
 
-lsv/pa2/deno.blif
+lsv/pa2/demo.blif
 
 _TEST/
 lib/abc*
