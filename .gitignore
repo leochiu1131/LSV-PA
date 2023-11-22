@@ -31,6 +31,7 @@ src/aig/ddb/
 *.plg
 
 *.zip
+*.tgz
 
 abcspaceext.dsw
 abcext.dsp
