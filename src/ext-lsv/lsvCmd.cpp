@@ -19,6 +19,7 @@ static int Lsv_CommandSimulateBDD(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandSimulateAIG(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandCheckSymmetryBDD(Abc_Frame_t *pAbc, int argc, char **argv);
 static int Lsv_CommandCheckSymmetrySAT(Abc_Frame_t *pAbc, int argc, char **argv);
+static int Lsv_CommandCheckSymmetryALL(Abc_Frame_t *pAbc, int argc, char **argv);
 
 void init(Abc_Frame_t *pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
@@ -26,6 +27,7 @@ void init(Abc_Frame_t *pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimulateAIG, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandCheckSymmetryBDD, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandCheckSymmetrySAT, 0);
+    Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandCheckSymmetryALL, 0);
 }
 
 void destroy(Abc_Frame_t *pAbc) {}
@@ -796,6 +798,201 @@ int Lsv_CommandCheckSymmetrySAT(Abc_Frame_t *pAbc, int argc, char **argv) {
         ++i;
     }
     Lsv_CheckSymmetrySAT(pNtk, yk, xi, xj);
+    return 0;
+
+usage:
+    Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
+    Abc_Print(-2, "\t        check aig is symmetric or not\n");
+    Abc_Print(-2, "\t-h    : print the command usage\n");
+    return 1;
+}
+
+
+void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
+    int i;
+    Abc_Obj_t *pObj;
+    // printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
+    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 0);
+
+    int PINum = Abc_NtkPiNum(pNtk);
+
+    Abc_Obj_t *pYk = Abc_ObjFanin0(Abc_NtkPo(pNtkTar, 0));
+
+    Aig_Man_t *pMan = Abc_NtkToDar(pNtkTar, 0, 0);
+
+    Cnf_Dat_t *pCnf = Cnf_Derive(pMan, 1);
+
+    Cnf_Dat_t *pCnf2 = Cnf_Derive(pMan, 1);
+    Cnf_DataLift(pCnf2, pCnf->nVars);
+
+    sat_solver *pSat = sat_solver_new();
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf2, 1, 0);
+
+    // add control variable v_H
+    for ( i = 0; i < PINum; ++i ) {
+        sat_solver_addvar(pSat);
+    }
+
+    // pSat->fPrintClause = 1;
+
+    //  (a == b) => (a + b') * (a' + b)
+    Abc_NtkForEachPi(pNtkTar, pObj, i) {
+        int Var1, Var2, VarH;
+        Var1 = pCnf->pVarNums[pObj->Id];
+        Var2 = Var1 + pCnf->nVars;
+        VarH = Var1 + pCnf->nVars * 2;
+
+        lit Lits[3];
+
+        Lits[0] = toLitCond(Var1, 1);
+        Lits[1] = toLitCond(Var2, 0);
+        Lits[2] = toLitCond(VarH, 0);
+        sat_solver_addclause(pSat, Lits, Lits + 3);
+
+        Lits[0] = toLitCond(Var1, 0);
+        Lits[1] = toLitCond(Var2, 1);
+        Lits[2] = toLitCond(VarH, 0);
+        sat_solver_addclause(pSat, Lits, Lits + 3);
+    }
+
+    // Swap xi and xj
+    for ( int xi = 0; xi < PINum - 1; ++xi ) {
+        for ( int xj = xi + 1; xj < PINum; ++xj ) {
+            // printf("xi = %d, xj = %d\n", Abc_NtkPi(pNtkTar, xi)->Id, Abc_NtkPi(pNtkTar, xj)->Id);
+            Abc_Obj_t *pXi = Abc_NtkPi(pNtkTar, xi);
+            Abc_Obj_t *pXj = Abc_NtkPi(pNtkTar, xj);
+
+            int Var1, Var2, VarH1, VarH2;
+            lit Lits[4];
+
+            Var1 = pCnf->pVarNums[pXi->Id];
+            Var2 = pCnf->pVarNums[pXj->Id] + pCnf->nVars;
+            VarH1 = Var1 + pCnf->nVars * 2;
+            VarH2 = Var2 + pCnf->nVars;
+
+            Lits[0] = toLitCond(Var1, 1);
+            Lits[1] = toLitCond(Var2, 0);
+            Lits[2] = toLitCond(VarH1, 1);
+            Lits[3] = toLitCond(VarH2, 1);
+            sat_solver_addclause(pSat, Lits, Lits + 4);
+
+            Lits[0] = toLitCond(Var1, 0);
+            Lits[1] = toLitCond(Var2, 1);
+            Lits[2] = toLitCond(VarH1, 1);
+            Lits[3] = toLitCond(VarH2, 1);
+            sat_solver_addclause(pSat, Lits, Lits + 4);
+
+            
+            Var1 = pCnf->pVarNums[pXj->Id];
+            Var2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars;
+            VarH1 = Var1 + pCnf->nVars * 2;
+            VarH2 = Var2 + pCnf->nVars;
+
+            Lits[0] = toLitCond(Var1, 1);
+            Lits[1] = toLitCond(Var2, 0);
+            Lits[2] = toLitCond(VarH1, 1);
+            Lits[3] = toLitCond(VarH2, 1);
+            sat_solver_addclause(pSat, Lits, Lits + 4);
+
+            Lits[0] = toLitCond(Var1, 0);
+            Lits[1] = toLitCond(Var2, 1);
+            Lits[2] = toLitCond(VarH1, 1);
+            Lits[3] = toLitCond(VarH2, 1);
+            sat_solver_addclause(pSat, Lits, Lits + 4);
+        }
+    }
+
+    // Var(y1) xor Var(y2)
+    int VarY1 = pCnf->pVarNums[pYk->Id];
+    int VarY2 = VarY1 + pCnf->nVars;
+    int xorVar = sat_solver_addvar(pSat);
+    sat_solver_add_xor(pSat, xorVar, VarY1, VarY2, 0);
+    lit xorLit = toLitCond(xorVar, 0);
+    sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
+
+    
+    
+    // run SAT solver
+    for ( int xi = 0; xi < PINum - 1; ++xi ) {
+        for ( int xj = xi + 1; xj < PINum; ++xj ) {
+            Abc_Obj_t *pXi = Abc_NtkPi(pNtkTar, xi);
+            Abc_Obj_t *pXj = Abc_NtkPi(pNtkTar, xj);
+
+            int VarH1, VarH2;
+            lit constraints[PINum];
+
+            VarH1 = pCnf->pVarNums[pXi->Id] + pCnf->nVars * 2;
+            VarH2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars * 2;
+
+            for ( int hi = 0; hi < PINum; ++hi ) {
+                Abc_Obj_t *pHi = Abc_NtkPi(pNtkTar, hi);
+                int VarHi = pCnf->pVarNums[pHi->Id] + pCnf->nVars * 2;
+                if ( pHi == pXi || pHi == pXj ) {
+                    constraints[hi] = toLitCond(VarHi, 0); // constraint Hi == 1
+                }
+                else {
+                    constraints[hi] = toLitCond(VarHi, 1); // constraint Hi == 0
+                }
+            }
+            
+            int status = sat_solver_solve(pSat, constraints, constraints + PINum, 0, 0, 0, 0);
+
+            if ( status == l_True ) {
+                printf("satifiable\n");
+            }
+            else if ( status == l_False ) {
+                printf("unsatisfiable\n");
+                printf("%d %d\n", xi, xj);
+            }
+
+            // Abc_NtkForEachObj(pNtkTar, pObj, i) {
+            //     printf("Obj-%d: SAT ID = %d, name = %s\n", i, pCnf->pVarNums[pObj->Id], Abc_ObjName(pObj));
+            // }
+
+            // for ( int i = 0; i < sat_solver_nvars(pSat); ++i ) {
+            //     printf("%d: %d\n", i, sat_solver_var_value(pSat, i));
+            // }
+
+            // // Abc_NtkShow(pNtkTar, 0, 0, 1, 0);
+            // printf("Number of variables: %d\n", sat_solver_nvars(pSat));
+            // printf("Number of clauses: %d\n", sat_solver_nclauses(pSat));
+        }
+    }
+
+    // printf("%s\n", pMan->pName);
+}
+
+int Lsv_CommandCheckSymmetryALL(Abc_Frame_t *pAbc, int argc, char **argv) {
+    Abc_Ntk_t *pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+    int yk = 0;
+    int i;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt(argc, argv, "h") ) != EOF ) {
+        switch ( c ) {
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( !pNtk ) {
+        Abc_Print(-1, "Empty network.\n");
+        return 1;
+    }
+    if ( argc != 2 ) {
+        Abc_Print(-1, "Wrong argument format.\n");
+        return 1;
+    }
+
+    // extract yk
+    i = 0;
+    while ( argv[1][i] != '\0' ) {
+        yk = yk * 10 + ( argv[1][i] - 48 );
+        ++i;
+    }
+    Lsv_CheckSymmetryALL(pNtk, yk);
     return 0;
 
 usage:
