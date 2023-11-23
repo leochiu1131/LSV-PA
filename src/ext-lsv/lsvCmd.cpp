@@ -298,42 +298,27 @@ bool traverseBDD(DdManager *dd, DdNode *node, std::unordered_map<unsigned int, b
     int varIndex = Cudd_NodeReadIndex(node);
 
     if ( Cudd_IsConstant(node) ) {
-        printf("const %d\n", node == Cudd_ReadOne(dd));
+        // printf("const %d\n", node == Cudd_ReadOne(dd));
         return node == Cudd_ReadOne(dd);  // Return true if terminal node is 1
     }
 
     // printf("var %d\n", varIndex);
-
-    DdNode *thenChild = Cudd_T(node);
-    DdNode *elseChild = Cudd_E(node);
-
     // printf("is complemented: %d\n", Cudd_IsComplement(node));
 
     // Try the high child first.
     bddID2assignedValue[varIndex] = ( Cudd_IsComplement(node) ) ? false : true;
-    // traverseBDD(dd, thenChild, bddID2assignedValue);
-    // if ( Cudd_IsComplement(node) ? !traverseBDD(dd, thenChild, bddID2assignedValue)
-    //     : traverseBDD(dd, thenChild, bddID2assignedValue) ) {
-    //     return true;
-    // }
 
-
-    if ( traverseBDD(dd, thenChild, bddID2assignedValue) ) {
+    if ( traverseBDD(dd, Cudd_T(node), bddID2assignedValue) ) {
         return true;
     }
-
-    // printf("high child failed\n");
 
     // If the high child did not work, try the low child.
     bddID2assignedValue[varIndex] = ( Cudd_IsComplement(node) ) ? true : false;
-    // traverseBDD(dd, elseChild, bddID2assignedValue);
-    // return true;
-    if ( traverseBDD(dd, elseChild, bddID2assignedValue) ) {
+
+    if ( traverseBDD(dd, Cudd_E(node), bddID2assignedValue) ) {
         return true;
     }
     return false;
-
-    // return Cudd_IsComplement(node) ? !traverseBDD(dd, elseChild, bddID2assignedValue) : traverseBDD(dd, elseChild, bddID2assignedValue);
 }
 
 void write_dd(DdManager *gbm, DdNode *dd, char *filename)
@@ -389,6 +374,7 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
 
     // check symmetry
     DdNode *funcNode = ( DdNode * ) pNode->pData;
+    Cudd_Ref(funcNode);
     DdNode *xiNode;
     DdNode *xjNode;
     DdNode *funcNodeCofactor1;
@@ -398,30 +384,50 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     if ( xi != -1 && xj != -1 ) {
         xiNode = Cudd_bddIthVar(dd, xi);
         xjNode = Cudd_bddIthVar(dd, xj);
+        Cudd_Ref(xiNode);
+        Cudd_Ref(xjNode);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xiNode);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNodeCofactor1, Cudd_Not(xjNode));
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNodeCofactor2, xjNode);
+        Cudd_RecursiveDeref(dd, xiNode);
+        Cudd_RecursiveDeref(dd, xjNode);
+        Cudd_Ref(funcNodeCofactor1);
+        Cudd_Ref(funcNodeCofactor2);
         is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else if ( xi == -1 && xj != -1 ) {
         xjNode = Cudd_bddIthVar(dd, xj);
+        Cudd_Ref(xjNode);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xjNode);
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xjNode));
-        is_symmetric = false;
+        Cudd_RecursiveDeref(dd, xjNode);
+        Cudd_Ref(funcNodeCofactor1);
+        Cudd_Ref(funcNodeCofactor2);
+        is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else if ( xi != -1 && xj == -1 ) {
         xiNode = Cudd_bddIthVar(dd, xi);
+        Cudd_Ref(xiNode);
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xiNode);
         funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
-        is_symmetric = false;
+        Cudd_RecursiveDeref(dd, xiNode);
+        Cudd_Ref(funcNodeCofactor1);
+        Cudd_Ref(funcNodeCofactor2);
+        is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else {
         is_symmetric = true;
     }
 
+    Cudd_RecursiveDeref(dd, funcNode);
+
     if ( is_symmetric ) {
         printf("symmetric\n");
+        if ( xi != -1 || xj != -1 ) {
+            Cudd_RecursiveDeref(dd, funcNodeCofactor1);
+            Cudd_RecursiveDeref(dd, funcNodeCofactor2);
+        }
         return;
     }
     else {
@@ -429,12 +435,12 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     }
 
     // find counterexample
-    Cudd_Ref(funcNodeCofactor1);
-    Cudd_Ref(funcNodeCofactor2);
-
     std::unordered_map<unsigned int, bool> bddID2assignedValue;
 
     DdNode *diffNode = Cudd_bddXor(dd, funcNodeCofactor1, funcNodeCofactor2);
+
+    Cudd_RecursiveDeref(dd, funcNodeCofactor1);
+    Cudd_RecursiveDeref(dd, funcNodeCofactor2);
     Cudd_Ref(diffNode);
 
     if ( traverseBDD(dd, diffNode, bddID2assignedValue) ) {
@@ -490,8 +496,6 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     // write_dd(dd, add, "diff.dot");
 
     Cudd_RecursiveDeref(dd, diffNode);
-    Cudd_RecursiveDeref(dd, funcNodeCofactor1);
-    Cudd_RecursiveDeref(dd, funcNodeCofactor2);
 }
 
 int Lsv_CommandCheckSymmetryBDD(Abc_Frame_t *pAbc, int argc, char **argv) {
@@ -567,9 +571,9 @@ void printCNF(Cnf_Dat_t *pCnf) {
     printf("Number of variables: %d\n", pCnf->nVars);
     for ( int i = 0; i < pCnf->nClauses; i++ ) {
         int *pLit, *pStop;
-        for ( pLit = pCnf->pClauses[i], pStop = pCnf->pClauses[i + 1]; pLit < pStop; pLit++ )
+        for ( pLit = pCnf->pClauses[i], pStop = pCnf->pClauses[i + 1]; pLit < pStop; pLit++ ) {
             printf("%d ", ( *pLit & 1 ) ? -( *pLit >> 1 ) : ( *pLit >> 1 ));
-
+        }
         printf("\n");
     }
 }
@@ -577,7 +581,7 @@ void printCNF(Cnf_Dat_t *pCnf) {
 void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     int i;
     Abc_Obj_t *pObj;
-    printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
+    // printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
     Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 0);
 
     char *xiName = Abc_ObjName(Abc_NtkPi(pNtk, xi_pos));
@@ -596,6 +600,11 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         }
     }
 
+    if ( pXi == nullptr && pXj == nullptr ) {
+        printf("symmetric\n");
+        return;
+    }
+
     Aig_Man_t *pMan = Abc_NtkToDar(pNtkTar, 0, 0);
 
     Cnf_Dat_t *pCnf = Cnf_Derive(pMan, 1);
@@ -607,15 +616,23 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
     Cnf_DataWriteIntoSolverInt(pSat, pCnf2, 1, 0);
 
+    // pSat->fPrintClause = 1;
+
     //  (a == b) => (a + b') * (a' + b)
     Abc_NtkForEachPi(pNtkTar, pObj, i) {
         int Var1, Var2;
 
         if ( pObj == pXi ) {
+            if ( pXj == nullptr ) {
+                continue;
+            }
             Var1 = pCnf->pVarNums[pXi->Id];
             Var2 = pCnf->pVarNums[pXj->Id] + pCnf->nVars;
         }
         else if ( pObj == pXj ) {
+            if ( pXi == nullptr ) {
+                continue;
+            }
             Var1 = pCnf->pVarNums[pXj->Id];
             Var2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars;
         }
@@ -635,6 +652,32 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         sat_solver_addclause(pSat, Lits, Lits + 2);
     }
 
+    // handle xi or xj does not exist
+    if ( pXi == nullptr ) {
+        int Var1 = pCnf->pVarNums[pXj->Id];
+        int Var2 = Var1 + pCnf->nVars;
+        printf("Xi not included\n");
+        lit Lit;
+
+        Lit = toLitCond(Var1, 0);
+        sat_solver_addclause(pSat, &Lit, &Lit + 1);
+
+        Lit = toLitCond(Var2, 1);
+        sat_solver_addclause(pSat, &Lit, &Lit + 1);
+    }
+    else if ( pXj == nullptr ) {
+        int Var1 = pCnf->pVarNums[pXi->Id];
+        int Var2 = Var1 + pCnf->nVars;
+        printf("Xj not included\n");
+        lit Lit;
+
+        Lit = toLitCond(Var1, 0);
+        sat_solver_addclause(pSat, &Lit, &Lit + 1);
+
+        Lit = toLitCond(Var2, 1);
+        sat_solver_addclause(pSat, &Lit, &Lit + 1);
+    }
+
     // Var(y1) xor Var(y2)
     int VarY1 = pCnf->pVarNums[pYk->Id];
     int VarY2 = VarY1 + pCnf->nVars;
@@ -643,6 +686,7 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     lit xorLit = toLitCond(xorVar, 0);
     sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
 
+    // run SAT solver
     int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
 
     if ( status == l_True ) {
@@ -652,9 +696,50 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         printf("symmetric\n");
         return;
     }
-    
-    // printCNF(pCnf);
-    // printCNF(pCnf2);
+
+    std::string counterexample1(Abc_NtkPiNum(pNtk), '0');
+    std::string counterexample2(Abc_NtkPiNum(pNtk), '0');
+
+    int tarNtk_i = 0;
+    Abc_NtkForEachPi(pNtk, pObj, i) {
+        // printf("%d %d\n", i, tarNtk_i);
+        if ( tarNtk_i >= Abc_NtkPiNum(pNtkTar) ) {
+            if ( i == xi_pos ) {
+                counterexample1[i] = '1';
+                counterexample2[i] = '0';
+            }
+            else if ( i == xj_pos ) {
+                counterexample1[i] = '0';
+                counterexample2[i] = '1';
+            }
+            continue;
+        }
+
+        Abc_Obj_t *pObjTar = Abc_NtkPi(pNtkTar, tarNtk_i);
+        if ( i == xi_pos ) {
+            counterexample1[i] = '1';
+            counterexample2[i] = '0';
+            if ( strcmp(Abc_ObjName(pObj), Abc_ObjName(pObjTar)) == 0 ) {
+                ++tarNtk_i;
+            }
+        }
+        else if ( i == xj_pos ) {
+            counterexample1[i] = '0';
+            counterexample2[i] = '1';
+            if ( strcmp(Abc_ObjName(pObj), Abc_ObjName(pObjTar)) == 0 ) {
+                ++tarNtk_i;
+            }
+        }
+        else if ( strcmp(Abc_ObjName(pObj), Abc_ObjName(pObjTar)) == 0 ) {
+            int SAT_ID = pCnf->pVarNums[pObjTar->Id];
+            counterexample1[i] = '0' + sat_solver_var_value(pSat, SAT_ID);
+            counterexample2[i] = '0' + sat_solver_var_value(pSat, SAT_ID);
+            ++tarNtk_i;
+        }
+    }
+
+    printf("%s\n", counterexample1.c_str());
+    printf("%s\n", counterexample2.c_str());
 
     // Abc_NtkForEachObj(pNtkTar, pObj, i) {
     //     printf("Obj-%d: SAT ID = %d, name = %s\n", i, pCnf->pVarNums[pObj->Id], Abc_ObjName(pObj));
