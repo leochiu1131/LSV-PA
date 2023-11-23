@@ -1,9 +1,12 @@
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
+// #include "bdd/cudd/cudd.h"
+
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <stdlib.h>
 
 /* -> Some hints about PA#1
 
@@ -33,6 +36,9 @@ static int Lsv_CommandPrintNodes      ( Abc_Frame_t *pAbc, int argc, char **argv
 static int Abc_CommandHello           ( Abc_Frame_t *pAbc, int argc, char **argv );
 static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv );
 static int Abc_CommandLSVPallSimAIG   ( Abc_Frame_t *pAbc, int argc, char **argv );
+// Added function for PA#2
+static int Abc_CommandLSVSymBDD   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+
 void conductSimulation(Abc_Ntk_t *pNtk, Abc_Obj_t *pObj, bool simulaitonAct[], unsigned **simulationarr, int simArrWid);
 
 unsigned int **simulationArr;
@@ -45,6 +51,7 @@ void init(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_bdd",   Abc_CommandLSVSimBDD,        0 );
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_aig",   Abc_CommandLSVPallSimAIG,    0 );
     /* */
+    Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_bdd",   Abc_CommandLSVSymBDD,    	0 );
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -98,6 +105,151 @@ usage:
   return 1;
 }
 
+// PA#2 1.Symmetry Checking with BDD
+static int Abc_CommandLSVSymBDD ( Abc_Frame_t *pAbc, int argc, char **argv ){
+	
+    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+
+    pNtk = Abc_FrameReadNtk(pAbc);
+	
+	// argument parsing
+	if(argc != 4){
+		Abc_Print( -2, "usage: lsv_sym_bdd <k> <i> <j> \n" );
+		Abc_Print( -2, "\t        Determine if the output pin yk is symmetric in xi and xj.\n" );
+		return 1;
+	}
+	int inK, inI, inJ;
+	inK = atoi(argv[1]);
+	inI = atoi(argv[2]);
+	inJ = atoi(argv[3]);
+	
+	// printf("This networks has Pi/Po = %d/%d\n", Abc_NtkPiNum(pNtk), Abc_NtkPoNum(pNtk));
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
+    {
+        switch ( c )
+        {
+			case 'h':
+			default:{
+				Abc_Print( -2, "usage: lsv_sym_bdd <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the output pin yk is symmetric in xi and xj.\n" );
+				return 1;
+			}
+				
+        }
+    }
+	if ( pNtk == NULL )
+    {
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
+
+	// Start deriving Cofactor of ~XiXj & Xi~Xj
+	//
+	Abc_Obj_t *pPo;
+	pPo = Abc_NtkPo(pNtk, inK);
+	// printf("%s: ",Abc_ObjName(pPo) );
+	// printf("Po node fanin/fanout : %d / %d\n",Abc_ObjFaninNum(pPo) , Abc_ObjFanoutNum(pPo));
+
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+
+	DdManager *manager = (DdManager *)pRoot->pNtk->pManFunc;  
+	// DdNode* ddnode = (DdNode *)pRoot->pData;
+
+	DdNode *PNCofact =(DdNode *)pRoot->pData;
+	DdNode *NPCofact = (DdNode *)pRoot->pData;
+
+	Vec_Int_t *pRootIdxArr;
+	pRootIdxArr = Abc_ObjFaninVec(pRoot);
+	for(int i = 0; i < pRootIdxArr->nSize; ++i){
+		// printf("*%d*", pRootIdxArr->pArray[i]);
+		// char inputChar = argv[1][pRootIdxArr->pArray[i] - 1];
+		int currentIndex = pRootIdxArr->pArray[i];
+		// std::cout << "input( " << i << "):" <<  currentIndex << std::endl;
+
+		if(currentIndex == (inI + 1)){
+			Cudd_RecursiveDeref(manager, PNCofact);
+			PNCofact = Cudd_Cofactor(manager, PNCofact, Cudd_bddIthVar(manager, i));
+			Cudd_Ref(PNCofact);
+
+			Cudd_RecursiveDeref(manager, NPCofact);
+			NPCofact = Cudd_Cofactor(manager, NPCofact, Cudd_Not(Cudd_bddIthVar(manager, i)));
+			Cudd_Ref(NPCofact);
+		} else if(currentIndex == (inJ + 1)){
+			Cudd_RecursiveDeref(manager, PNCofact);
+			PNCofact = Cudd_Cofactor(manager, PNCofact, Cudd_Not(Cudd_bddIthVar(manager, i)));
+			Cudd_Ref(PNCofact);
+
+			Cudd_RecursiveDeref(manager, NPCofact);
+			NPCofact = Cudd_Cofactor(manager, NPCofact, Cudd_bddIthVar(manager, i));
+			Cudd_Ref(NPCofact);
+
+		}
+	}
+
+	// Check if two cofactor are equal, if yes, output and return
+	if(Cudd_EquivDC(manager, PNCofact, NPCofact, Cudd_ReadZero(manager))){
+		printf("symmetric\n");
+		return 0;
+	}else{
+		printf("asymmetric\n");
+	}
+
+	// Perform Exclusive or on two cofactored BDDs
+	DdNode *XorNode = Cudd_bddXor(manager, PNCofact, NPCofact);
+	Cudd_Ref(XorNode);
+	
+	// Cudd_PrintDebug(manager, XorNode, pRootIdxArr->nSize, 3);
+	// std::cout << "new 1: " << Cudd_CountPathsToNonZero(XorNode) << std::endl;
+	// Cudd_PrintMinterm(manager, XorNode);
+	
+	// Get some cubes in BDD
+	int *cube;
+	CUDD_VALUE_TYPE value;
+	
+	Cudd_FirstCube(manager, XorNode, &cube, &value);
+	
+	int numPis = Abc_NtkPiNum(pNtk);
+
+	// Two Counter examples are the size of Primary Inputs
+	char ctrExample1[numPis+1] = "";
+	char ctrExample2[numPis+1] = "";
+	memset(ctrExample1, '0', numPis);
+	memset(ctrExample2, '0', numPis);
+
+	// making the two counter examples by extracting the FirstCube informaiton
+	for(int i = 0; i < pRootIdxArr->nSize; ++i){
+
+		int BddIndex = (pRootIdxArr->pArray[i] - 1);
+		// std::cout << "input( " << i << "):" <<  BddIndex << std::endl;
+		
+		if(cube[i] == 1){
+			// includes 1 and 2(done't care)
+			ctrExample1[BddIndex] = ctrExample2[BddIndex] = '1';
+		}else{
+			ctrExample1[BddIndex] = ctrExample2[BddIndex] = '0';
+		}
+		// boolean value @<i> and @<j> shall be inverted 0/1
+		if(BddIndex == inI){
+			ctrExample1[BddIndex] = '1';
+			ctrExample2[BddIndex] = '0';
+		}else if(BddIndex == inJ){
+			ctrExample1[BddIndex] = '0';
+			ctrExample2[BddIndex] = '1';
+		}
+	}
+
+	printf("%s\n", ctrExample1);
+	printf("%s\n", ctrExample2);
+
+	return 0;
+}
+
+
+
 static int Abc_CommandHello ( Abc_Frame_t *pAbc, int argc, char **argv ){
     Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
     int c;
@@ -143,7 +295,7 @@ usage:
     return 1;
 }
 
-static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv )
+static int Abc_CommandLSVSimBDD ( Abc_Frame_t *pAbc, int argc, char **argv )
 {
     Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
     int c;
@@ -175,8 +327,8 @@ static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv
         return 1;
     }
 
-	Abc_Obj_t *pPi;
-	int ithPi;
+	// Abc_Obj_t *pPi;
+	// int ithPi;
 
 	Abc_Obj_t *pPo;
 	int ithPo;
@@ -186,7 +338,6 @@ static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv
 
 		Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
 		assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
-
 
 		// Abc_Obj_t *pFanin;
 		// int ithFanin;

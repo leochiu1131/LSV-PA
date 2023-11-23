@@ -1,0 +1,20 @@
+.model symtest
+.inputs x0 x1 x2 x3 x4 x5 x6 x7 x8
+.outputs y0 y1 y2
+# y0 = x0x1 + x2 
+.names x0 x1 x2 y0
+11- 1
+--1 1
+# y1 = x2x3 + x4x5x6 + x6x7 
+.names x2 x3 x4 x5 x6 x7 y1
+11---- 1
+--111- 1
+----11 1
+# y2 = x0x7x8 + x1x2 + x3'x4x5 + x4x6' + x3'x5'x6
+.names x0 x1 x2 x3 x4 x5 x6 x7 x8 y2
+1------11 1
+-11------ 1
+---011--- 1
+----1-0-- 1
+---0-01-- 1
+.end
