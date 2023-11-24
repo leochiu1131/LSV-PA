@@ -1,12 +1,17 @@
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
-// #include "bdd/cudd/cudd.h"
+#include "sat/cnf/cnf.h"
+#include "aig/aig/aig.h"
 
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <stdlib.h>
+
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 /* -> Some hints about PA#1
 
@@ -38,6 +43,7 @@ static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv
 static int Abc_CommandLSVPallSimAIG   ( Abc_Frame_t *pAbc, int argc, char **argv );
 // Added function for PA#2
 static int Abc_CommandLSVSymBDD   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+static int Abc_CommandLSVSymSAT   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
 
 void conductSimulation(Abc_Ntk_t *pNtk, Abc_Obj_t *pObj, bool simulaitonAct[], unsigned **simulationarr, int simArrWid);
 
@@ -50,8 +56,9 @@ void init(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd( pAbc, "Printing",     "hello",         Abc_CommandHello,            0 );
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_bdd",   Abc_CommandLSVSimBDD,        0 );
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_aig",   Abc_CommandLSVPallSimAIG,    0 );
-    /* */
+    /* LSV PA#2 */
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_bdd",   Abc_CommandLSVSymBDD,    	0 );
+    Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_sat",   Abc_CommandLSVSymSAT,    	0 );
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -134,7 +141,7 @@ static int Abc_CommandLSVSymBDD ( Abc_Frame_t *pAbc, int argc, char **argv ){
 			case 'h':
 			default:{
 				Abc_Print( -2, "usage: lsv_sym_bdd <k> <i> <j> \n" );
-				Abc_Print( -2, "\t        Determine if the output pin yk is symmetric in xi and xj.\n" );
+				Abc_Print( -2, "\t        Determine if the BDD's output pin yk is symmetric in xi and xj.\n" );
 				return 1;
 			}
 				
@@ -248,6 +255,106 @@ static int Abc_CommandLSVSymBDD ( Abc_Frame_t *pAbc, int argc, char **argv ){
 	return 0;
 }
 
+// PA#2 2.Symmetry Checking with SAT
+static int Abc_CommandLSVSymSAT( Abc_Frame_t *pAbc, int argc, char **argv ){
+    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+
+	// argument parsing
+	if(argc != 4){
+		Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+		Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+		return 1;
+	}
+	int inK, inI, inJ;
+	inK = atoi(argv[1]);
+	inI = atoi(argv[2]);
+	inJ = atoi(argv[3]);
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
+    {
+        switch ( c )
+        {
+			case 'h':{
+				Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+				return 1;
+				break;
+			}
+			default:{
+				Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+				return 1;
+			}
+        }
+    }
+
+    if ( pNtk == NULL )
+    {
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
+
+
+
+
+	Abc_Obj_t *pCo = Abc_NtkCo(pNtk, inK);
+	Abc_Ntk_t *pNtk_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pCo), Abc_ObjName(pCo), 0);
+
+	int conePiCount = Abc_NtkPiNum(pNtk_cone);
+
+	Abc_NtkPrintStats(pNtk_cone, 0,0,0,0,0,0,0,0,0,0);
+	
+	Aig_Man_t *AigMan1 = Abc_NtkToDar(pNtk_cone, 0, 0);
+	Aig_Man_t *AigMan2 = Abc_NtkToDar(pNtk_cone, 0, 0);
+	
+	Aig_Obj_t **pPi1 = ABC_ALLOC(Aig_Obj_t*, conePiCount);
+	Aig_Obj_t **pPi2 = ABC_ALLOC(Aig_Obj_t*, conePiCount);
+
+	// printf("Man ObjNum Max: %d/%d\n", Aig_ManObjNumMax(AigMan1) + Aig_ManObjNumMax(AigMan2));
+	Aig_Man_t *pAig = Aig_ManStart(Aig_ManObjNumMax(AigMan1) + Aig_ManObjNumMax(AigMan2));
+
+	
+	int idx;
+	Aig_Obj_t *pObj;
+	// Add Aig1 to Constructed AIG 
+	Aig_ManConst1(AigMan1)->pData = Aig_ManConst1(pAig);
+	Aig_ManForEachPiSeq(AigMan1, pObj, idx){
+		pObj->pData = Aig_ObjCreateCi(pAig);
+		pPi1[idx] = (Aig_Obj_t *)pObj->pData;
+	}
+	Aig_ManForEachNode(pAig, pObj, idx){
+		pObj->pData = Aig_And(pAig, Aig_ObjChild0Copy(pObj), Aig_ObjChild1Copy(pObj));
+	}
+
+	printf("1: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
+	// Add Aig2 to Constructed AIG 
+	Aig_ManConst1(AigMan2)->pData = Aig_ManConst1(pAig);
+	Aig_ManForEachPiSeq(AigMan2, pObj, idx){
+		pObj->pData = Aig_ObjCreateCi(pAig);
+		pPi2[idx] = (Aig_Obj_t *)pObj->pData;
+	}
+	Aig_ManForEachNode(pAig, pObj, idx){
+		pObj->pData = Aig_And(pAig, Aig_ObjChild0Copy(pObj), Aig_ObjChild1Copy(pObj));
+	}
+
+	printf("2: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
+
+	Aig_Obj_t *xoredAig = Aig_Exor(pAig, Aig_ObjChild0Copy(Aig_ManCo(AigMan1, 0)), Aig_ObjChild0Copy(Aig_ManCo(AigMan2, 0)));
+	Aig_ObjCreateCo(pAig, xoredAig);
+	Aig_ManCleanup(pAig);
+
+	
+
+	printf("3: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
+
+	// Constructed Xored AigGraph (pAig)
+
+	//TODO
+
+	return 0;
+}
 
 
 static int Abc_CommandHello ( Abc_Frame_t *pAbc, int argc, char **argv ){
