@@ -1,0 +1,6 @@
+tree dd038938b3a287830c9df4138f2b0363d163ae86
+parent 7ea40494eb637c5c717c3fa80529bfbbec897f83
+author Alan Mishchenko <alanmi@berkeley.edu> 1327993898 -0800
+committer Alan Mishchenko <alanmi@berkeley.edu> 1327993898 -0800
+
+Graph isomorphism checking code.
