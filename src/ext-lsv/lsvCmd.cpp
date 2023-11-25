@@ -9,11 +9,15 @@ using namespace std;
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -66,6 +70,10 @@ usage:
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
+
+////////////////////////////////////////////////////////////////////////
+///                        PA1                                       ///
+////////////////////////////////////////////////////////////////////////
 
 void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* arg) {
 	int inputNum = Abc_NtkCiNum(pNtk);
@@ -246,6 +254,94 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 usage:
 	Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
 	Abc_Print(-2, "\t        simulate the Ntk with aig\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
+////////////////////////////////////////////////////////////////////////
+///                        PA2                                       ///
+////////////////////////////////////////////////////////////////////////
+
+void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char** argv) {
+	// int inputNum = Abc_NtkCiNum(pNtk);
+	// bool inputValue[inputNum];
+	// for (int i = 0; i < inputNum; ++i) {
+	// 	inputValue[i] = (arg[i] == '1');
+	// }
+
+	DdManager* dd = (DdManager*)pNtk->pManFunc; 
+}
+
+void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char** argv) {
+
+}
+
+
+
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsStrash(pNtk)) {
+		Abc_Print(-1, "Network is not logic AIG networks (run \"strash\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong input!!!\n");
+		return 1;
+	}
+	Lsv_NtkSymSat(pNtk, argv);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
+	Abc_Print(-2, "\t        simulate the Ntk with aig\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsBddLogic(pNtk)) {
+		Abc_Print(-1, "Network is not logic BDD networks (run \"collapse\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong input!!!\n");
+		return 1;
+	}
+	Lsv_NtkSymBdd(pNtk, argv);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+	Abc_Print(-2, "\t        simulate the Ntk with bdd\n");
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
