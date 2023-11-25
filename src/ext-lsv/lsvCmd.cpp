@@ -429,46 +429,6 @@ usage:
   return 1;
 }
 
-bool Recur_get_diff_pattern(DdManager* dd, string& pattern1, string& pattern2, int cur_var, int num_var, DdNode* temp1, DdNode* temp2, int i, int j) {
-    if (cur_var == num_var) return true;
-    
-    if (cur_var == i) {
-      pattern1 += "0";
-      pattern2 += "1";
-      if (!Recur_get_diff_pattern(dd, pattern1, pattern2, cur_var+1, num_var, temp1, temp2, i, j)){
-        pattern1.erase(pattern1.size() - 1);
-        pattern2.erase(pattern2.size() - 1);
-        return false;
-      }
-      else 
-        return true;
-    }
-    else if (cur_var == j) {
-      pattern1 += "1";
-      pattern2 += "0";
-      if (!Recur_get_diff_pattern(dd, pattern1, pattern2, cur_var+1, num_var, temp1, temp2, i, j)){
-        pattern1.erase(pattern1.size() - 1);
-        pattern2.erase(pattern2.size() - 1);
-        return false;
-      }
-      else 
-        return true;
-    }
-    else {
-      DdNode* temp1_1 = Cudd_Cofactor( dd, temp1, dd->vars[cur_var] );
-      DdNode* temp2_1 = Cudd_Cofactor( dd, temp2, dd->vars[cur_var] );
-      Cudd_Ref(temp1_1);
-      Cudd_Ref(temp2_1);
-      if (temp1_1 == temp2_1) {
-        Cudd_RecursiveDeref(dd, temp1_1);
-        Cudd_RecursiveDeref(dd, temp2_1);
-        temp1_1 = Cudd_Cofactor( dd, temp1, Cudd_Not(dd->vars[cur_var]) );
-        temp2_1 = Cudd_Cofactor( dd, temp2, Cudd_Not(dd->vars[cur_var]) );
-
-      }
-    }
-}
-
 void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
   DdManager* dd = (DdManager*) pNtk->pManFunc; //bdd manager
   DdNode* temp1_3, * temp2_3;
@@ -482,7 +442,7 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
   char* input2_name = Abc_ObjName(Abc_NtkPi(pNtk, j));
   char** pNamesIn = (char**)Abc_NodeGetFaninNames(func)->pArray;
   int FaninNum = Abc_ObjFaninNum(func);
-  int n = Abc_NtkCiNum(pNtk);
+  int ci_num = Abc_NtkCiNum(pNtk);
   DdNode* temp1 = (DdNode*) func->pData;
   DdNode* temp2 = (DdNode*) func->pData;
   Cudd_Ref(temp1);
@@ -520,27 +480,36 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
   }
   else {
     // Recur_get_diff_pattern(dd, pattern1, pattern2, 0, Abc_NtkCiNum(pNtk), temp1_2, temp2_2, i, j);
-    for (n = 0; n < FaninNum; n++) {
-      if(strcmp(pNamesIn[n], input1_name) == 0){
+    for (int n = 0; n < ci_num; n++) {
+      int record;
+      char* cur_name = Abc_ObjName(Abc_NtkPi(pNtk, n));
+      bool mark = false;
+      for (int m = 0; m < FaninNum; m++) {
+        if(strcmp(pNamesIn[m], cur_name) == 0) {
+          mark = true;
+          record = m;
+        }
+      }
+      if(strcmp(cur_name, input1_name) == 0){
         pattern1 += "0";
         pattern2 += "1";
       }
-      else if(strcmp(pNamesIn[n], input2_name) == 0){
+      else if(strcmp(cur_name, input2_name) == 0){
         pattern1 += "1";
         pattern2 += "0";
       }
-      else {
+      else if (mark) {
         temp1_3 = temp1;
         temp2_3 = temp2;
-        temp1 = Cudd_Cofactor( dd, temp1_3, dd->vars[n] );
-        temp2 = Cudd_Cofactor( dd, temp2_3, dd->vars[n] );
+        temp1 = Cudd_Cofactor( dd, temp1_3, dd->vars[record] );
+        temp2 = Cudd_Cofactor( dd, temp2_3, dd->vars[record] );
         Cudd_Ref(temp1);
         Cudd_Ref(temp2);
         if (temp1 == temp2) {
           Cudd_RecursiveDeref(dd, temp1);
           Cudd_RecursiveDeref(dd, temp2);
-          temp1 = Cudd_Cofactor( dd, temp1_3, Cudd_Not(dd->vars[n]) );
-          temp2 = Cudd_Cofactor( dd, temp2_3, Cudd_Not(dd->vars[n]) );
+          temp1 = Cudd_Cofactor( dd, temp1_3, Cudd_Not(dd->vars[record]) );
+          temp2 = Cudd_Cofactor( dd, temp2_3, Cudd_Not(dd->vars[record]) );
           pattern1 += "0";
           pattern2 += "0";
         }
@@ -550,6 +519,10 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
         }
         Cudd_RecursiveDeref(dd, temp1_3);
         Cudd_RecursiveDeref(dd, temp2_3);
+      }
+      else {
+        pattern1 += "0";
+        pattern2 += "0";
       }
     }
     printf("asymmetric\n");
@@ -730,7 +703,7 @@ void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, char* output) {
   solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_1, 1, 0);
   solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf_2, 1, 0);
   int* enable_arr = new int[Abc_NtkCiNum(pNtk)];
-  int* enable_lit_arr = new int[Abc_NtkCiNum(pNtk)];
+  // int* enable_lit_arr = new int[Abc_NtkCiNum(pNtk)];
   for (int i = 0; i < Abc_NtkCiNum(pNtk); i++) {
     enable_arr[i] = sat_solver_addvar(solver);
   }
