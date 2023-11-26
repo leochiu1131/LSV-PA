@@ -3,8 +3,14 @@
 #include "base/main/mainInt.h"
 #include <iostream>
 #include <fstream>
-
+#include "sat/cnf/cnf.h"
+#include "bdd/cudd/cudd.h"
+#include "bdd/cudd/cuddInt.h"
 using namespace std;
+
+extern "C" {
+	Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -263,13 +269,110 @@ usage:
 ////////////////////////////////////////////////////////////////////////
 
 void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char** argv) {
-	// int inputNum = Abc_NtkCiNum(pNtk);
-	// bool inputValue[inputNum];
-	// for (int i = 0; i < inputNum; ++i) {
-	// 	inputValue[i] = (arg[i] == '1');
-	// }
+	int k = stoi(argv[1]);
+	int i = stoi(argv[2]);
+	int j = stoi(argv[3]);
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	
+	// total Fin number of pNtk
+	int CiNum = Abc_NtkCiNum(pNtk);
+	// Fin number of pPo (may be less)
+	int FaninNum = Abc_ObjFaninNum(pPo);
 
-	DdManager* dd = (DdManager*)pNtk->pManFunc; 
+	DdManager* dd = (DdManager*)pNtk->pManFunc;
+	char* inputName1 = Abc_ObjName(Abc_NtkPi(pNtk, i));
+	char* inputName2 = Abc_ObjName(Abc_NtkPi(pNtk, j));
+	char** vNamesIn = (char**) Abc_NodeGetFaninNames(pPo)->pArray;
+	DdNode* d1 = (DdNode*)pPo->pData;
+	DdNode* d2 = (DdNode*)pPo->pData;
+	Cudd_Ref(d1);
+	Cudd_Ref(d2);
+	for (int l = 0; l < FaninNum; ++l) {
+		if (strcmp(inputName1, vNamesIn[l]) == 0) {
+			DdNode* temp1 = Cudd_Cofactor(dd, d1, dd->vars[l]);
+			DdNode* temp2 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[l]));
+			Cudd_RecursiveDeref(dd, d1);
+			Cudd_RecursiveDeref(dd, d2);
+			d1 = temp1;
+			d2 = temp2;
+			Cudd_Ref(d1);
+			Cudd_Ref(d2);
+		}
+		if (strcmp(inputName2, vNamesIn[l]) == 0) {
+			DdNode* temp1 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[l]));
+			DdNode* temp2 = Cudd_Cofactor(dd, d2, dd->vars[l]);
+			Cudd_RecursiveDeref(dd, d1);
+			Cudd_RecursiveDeref(dd, d2);
+			d1 = temp1;
+			d2 = temp2;
+			Cudd_Ref(d1);
+			Cudd_Ref(d2);
+		}
+	}
+
+	// check if d1 == d2
+	if (d1 == d2) {
+		cout << "symmetric" << endl;
+	} else {
+		string s1, s2;
+		for (int l = 0; l < CiNum; ++l) {
+
+			// check if l is i, j
+			if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), inputName1) == 0) {
+				s1 += '0';
+				s2 += '1';
+				continue;
+			} else if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), inputName2) == 0) {
+				s1 += '1';
+				s2 += '0';
+				continue;
+			}
+
+			int ddvar = -1;
+			for (int m = 0; m < FaninNum; ++m) {
+				if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), vNamesIn[m]) == 0) {
+					ddvar = m;
+					continue;
+				}
+			}
+			// not appear in pPo
+			if (ddvar < 0) {
+				s1 += '0';
+				s2 += '0';
+				continue;
+			} else {
+				DdNode* temp1 = Cudd_Cofactor(dd, d1, dd->vars[ddvar]);
+				DdNode* temp2 = Cudd_Cofactor(dd, d2, dd->vars[ddvar]);
+				Cudd_Ref(temp1);
+				Cudd_Ref(temp2);
+				if (temp1 != temp2) {
+					Cudd_RecursiveDeref(dd, d1);
+					Cudd_RecursiveDeref(dd, d2);
+					d1 = temp1;
+					d2 = temp2;
+					s1 += '1';
+					s2 += '1';
+				} else {
+					Cudd_RecursiveDeref(dd, temp1);
+					Cudd_RecursiveDeref(dd, temp2);
+					temp1 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[ddvar]));
+					temp2 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[ddvar]));
+					Cudd_RecursiveDeref(dd, d1);
+					Cudd_RecursiveDeref(dd, d2);
+					d1 = temp1;
+					d2 = temp2;
+					Cudd_Ref(d1);
+					Cudd_Ref(d2);
+					s1 += '0';
+					s2 += '0';
+				}
+			}
+		}
+		cout << "asymmetric" << endl;
+		cout << s1 << endl;
+		cout << s2 << endl;
+	}
+
 }
 
 void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char** argv) {
