@@ -8,14 +8,16 @@
 
 #include <vector>
 
-static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv); //argument count , argument value
+static int Lsv_CommandPrintNodes (Abc_Frame_t* pAbc, int argc, char** argv); //argument count , argument value
 static int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBDD     (Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_print_node", Lsv_CommandPrintNodes, 0); 
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimulateBdd, 0);
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimulateAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_print_node_", Lsv_CommandPrintNodes , 0); 
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd"    , Lsv_CommandSimulateBdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig"    , Lsv_CommandSimulateAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd"    , Lsv_CommandSymBDD     , 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -40,6 +42,12 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
     }
   }
+
+  int numPIs = Abc_NtkPiNum(pNtk); // Number of Primary Inputs
+  int numPOs = Abc_NtkPoNum(pNtk); // Number of Primary Outputs
+
+  printf("Number of Primary Inputs: %d\n", numPIs);
+  printf("Number of Primary Outputs: %d\n", numPOs);
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
@@ -67,6 +75,136 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
+
+// ================= LSV Command SymBDD Used ===================================
+// todo : will PO change order?
+int Lsv_CommandSimulateBddChar(Abc_Frame_t* pAbc, char* input_pattern , int pOk) {
+    Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!input_pattern) {
+        Abc_Print(-2, "Error: input_pattern is NULL\n");
+        return 1;
+    }
+    if (pOk < 0 || pOk >= Abc_NtkPoNum(pNtk)) {
+        Abc_Print(-2, "Error: pOk is out of range\n");
+        return 1;
+    }
+
+    Abc_Obj_t* pPo;
+    int ithPo;
+
+    // Loop through each PO and simulate
+    Abc_NtkForEachPo(pNtk, pPo, ithPo) {
+        if (ithPo != pOk) {
+            continue; // Skip all but the pOk-th PO
+        }
+        Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+        assert(Abc_NtkIsBddLogic(pRoot->pNtk));
+        DdManager* dd = (DdManager*)pRoot->pNtk->pManFunc;
+        DdNode* ddnode = (DdNode*)pRoot->pData;
+        DdNode* temp = ddnode;
+
+        // Cofactor for each input bit in pattern
+        Abc_Obj_t* pCiObj;
+        int FaninIdx;
+        Abc_Obj_t * pFanin;
+        Abc_ObjForEachFanin(pRoot, pFanin, FaninIdx){
+            char* faninName = Abc_ObjName(pFanin);
+            int varIndex = -1;
+            Abc_NtkForEachCi(pNtk, pCiObj, varIndex) {
+                if (strcmp(faninName, Abc_ObjName(pCiObj)) == 0) {
+                    break;
+                }
+            }
+            if (varIndex == -1) {
+                Abc_Print(-2, "Error: Could not find CI with the name %s\n", faninName);
+                return 1;
+            }
+            int bit = input_pattern[varIndex] - '0';
+
+            DdNode* var = Cudd_bddIthVar(dd, FaninIdx);
+            temp = Cudd_Cofactor(dd, temp, bit ? var : Cudd_Not(var));
+            Cudd_Ref(temp);  // Keep the BDD node
+        }
+        // Check if the result equals to constant 1
+        int result = (temp == Cudd_ReadOne(dd));
+        
+        // Print the result
+        Abc_Print(1, "%s: %d\n", Abc_ObjName(pPo), result);
+        
+
+        // Dereference all temporary BDD nodes
+        Cudd_RecursiveDeref(dd, temp);
+
+        return result; // return the pOk-th output result
+        break;
+    }
+    return 0;
+}
+// ================= LSV Command SymBDD Start ===================================
+
+void printArray(char *array, int n) {
+    for (int k = 0; k < n; k++) {
+        printf("%c ", array[k]);
+    }
+    printf("\n");
+}
+
+void iterateCombinations(Abc_Frame_t* pAbc, char *array, int n, int current, int k, int i, int j) {
+    if (current == n) {
+        array[i] = '0';
+        array[j] = '1';
+        printArray(array, n);
+        int result1 = Lsv_CommandSimulateBddChar(pAbc, array, k);
+        array[i] = '1';
+        array[j] = '0';
+        printArray(array, n);
+        int result2 = Lsv_CommandSimulateBddChar(pAbc, array, k);
+        printf("\n");
+        // return ((result1 == result2) ? true : false) ;
+        return ;
+    }
+
+    // Skip changing the value at indices i and j
+    if (current == i || current == j) {
+        iterateCombinations(pAbc, array, n, current + 1, k, i, j);
+        return;
+    }
+
+    // Set current index to '0' and then to '1'
+    array[current] = '0';
+    iterateCombinations(pAbc, array, n, current + 1, k, i, j);
+    array[current] = '1';
+    iterateCombinations(pAbc, array, n, current + 1, k, i, j);
+}
+
+
+int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
+  if (argc != 4) { // Expecting four arguments: cmd, i, j, and k
+      Abc_Print(-2, "usage: lsv_sym_bdd <k> <i> <j>\n");
+      return 1;
+  }
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int k = atoi(argv[1]); // Convert k from string to integer
+  int i = atoi(argv[2]); // Convert i from string to integer
+  int j = atoi(argv[3]); // Convert j from string to integer
+  int numPIs = Abc_NtkPiNum(pNtk); // Number of Primary Inputs
+  // int numPOs = Abc_NtkPoNum(pNtk); // Number of Primary Outputs
+  // Your code logic here, using i, j, and k
+  char *array = (char *)calloc(numPIs, sizeof(char));
+  array[i] = '1'; // not important
+  array[j] = '1'; // not important
+
+  // Iterate through all combinations
+  iterateCombinations(pAbc, array, numPIs, 0, k, i, j);
+
+  free(array);
+  // int t = Lsv_CommandSimulateBddChar(pAbc, temp);
+  return 0;
+}
+
+// ================= LSV Command Try End ===================================
+
+
 
 
 int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
@@ -294,4 +432,6 @@ int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv) {
       free(pi_values);
       return 0;
       */
+
+
 }
