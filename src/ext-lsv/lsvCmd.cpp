@@ -373,7 +373,12 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
 }
 
 void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
-
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	Abc_Obj_t* cone = Abc_NtkCreateCone(pNtk, pRoot, Abc_ObjName(pRoot), 1);
+	Aig_Man_t* aig = Abc_NtkToDar(cone, 0, 0);
+	sat_solver* solver = sat_solver_new();
+	Cnf_Dat_t* cnf1 = Cnf_Derive(aig, 1);
 }
 
 
