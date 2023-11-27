@@ -1,0 +1,15 @@
+# y0 = x0x1 + x2
+
+.model ex1
+.inputs x0 x1 x2
+.outputs y0
+
+.names x0 x1 x0x1
+11 1
+
+# output logic
+.names x0x1 x2 y0
+10 1
+01 1
+
+.end

@@ -5,15 +5,71 @@
 #include <string>
 #include <bdd/cudd/cudd.h>
 #include <fstream>
+#include <vector>
+#include <map>
+#include <set>
+
+/* for SAT */
+#include "sat/cnf/cnf.h"
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
+/* disjoint set for lsv_sym_all command */
+static std::vector<int> disjointSetFather;
+static std::vector<int> disjointSetGroupSize;
+
+static void disjointSetInit(int n) {
+  disjointSetFather.resize(n);
+  disjointSetGroupSize.resize(n);
+  for (int i = 0; i < n; ++i) {
+    disjointSetFather[i] = i;
+    disjointSetGroupSize[i] = 1;
+  }
+}
+static int disjointSetFind(int x) {
+  assert(x < disjointSetFather.size());
+  return (disjointSetFather[x] == x) ? x : (disjointSetFather[x] = (disjointSetFather[x]));
+}
+
+static void disjointSetMerge(int a, int b) {
+  assert(a < disjointSetFather.size());
+  assert(b < disjointSetFather.size());
+  int fa = disjointSetFind(a);
+  int fb = disjointSetFind(b);
+  if (fa == fb)
+    return;
+  if (disjointSetGroupSize[fa] > disjointSetFather[fb]) 
+    std::swap(fa, fb);
+  // size(fa) < size(fb)
+  disjointSetFather[fa] = fb;
+  disjointSetGroupSize[fb] += disjointSetGroupSize[fa];
+  disjointSetGroupSize[fa] = 0;
+}
+
+static bool disjointSetEqual(int a, int b) {
+  assert(a < disjointSetFather.size());
+  assert(b < disjointSetFather.size());
+  return disjointSetFind(a) == disjointSetFind(b);
+}
+
+
+
+ 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -67,7 +123,7 @@ usage:
   return 1;
 }
 
-/* lsv_sim_bdd Command*/
+/* lsv_sim_bdd Command */
 int Lsv_SimBdd_getPiValue(Abc_Ntk_t* pNtk, const std::string& pattern, const char* piName) {
   if (Abc_NtkPiNum(pNtk) != pattern.size()) {
     printf("Error: pattern width != Pi num\n");
@@ -204,12 +260,10 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
-
 /* lsv_sim_bdd end */
 
 
-/* lsv_sim_aig Command*/
-
+/* lsv_sim_aig Command */
 void Lsv_SimAigInt(Abc_Ntk_t* pNtk, int* patternPi, int width) {
   if (width == 0)
     return;
@@ -318,5 +372,433 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
-
 /* lsv_sim_aig end */
+
+/* lsv_sym_bdd Command */
+void Lsv_SymBddCubeString2PrintCex(Abc_Ntk_t* pNtk, const std::vector<char*>& bddPiNames, const char* cubeString, int i_th, int j_th) {
+  int i;
+  Abc_Obj_t* pPi;
+  std::string cex;
+  Abc_NtkForEachPi(pNtk, pPi, i) {
+    char* piName = Abc_ObjName(pPi);
+    cex.push_back('0'); // dc we assume to 0
+    for (int j = 0; j < bddPiNames.size(); ++j) {
+      if (strcmp(bddPiNames[j], piName) == 0) {
+        cex.back() = (cubeString[j] ? '1' : '0');
+        break;
+      }
+    }
+  }
+  cex[i_th] = '0';
+  cex[j_th] = '1';
+  printf("%s\n", cex.c_str());
+  cex[i_th] = '1';
+  cex[j_th] = '0';
+  printf("%s\n", cex.c_str());
+}
+
+void Lsv_SymBdd(Abc_Ntk_t* pNtk, int k_th, int i_th, int j_th) {
+  if (!Abc_NtkHasBdd(pNtk)) {
+    printf("Error: This command is only applicable to bdd networks.\n");
+    return;
+  }
+  if (Abc_NtkPoNum(pNtk) <= k_th) {
+    printf("Error: k(%d) is larger than num of Po\n", k_th);
+    return;
+  }
+  if (Abc_NtkPiNum(pNtk) <= i_th) {
+    printf("Error: i(%d) is larger than num of Pi\n", i_th);
+    return;
+  }
+  if (Abc_NtkPiNum(pNtk) <= j_th) {
+    printf("Error: j(%d) is larger than num of Pi\n", j_th);
+    return;
+  }
+  if (i_th == j_th) {
+    printf("symmetric\n");
+    return;
+  }
+  Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k_th);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+  assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+  DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;
+  DdNode* bFunc = (DdNode *)pRoot->pData;   Cudd_Ref(bFunc);
+  char** piNames = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+  int fainNum = Abc_ObjFaninNum(pRoot);
+
+  DdNode* Cof_iBar_j;
+  DdNode* Cof_jBar_i;
+  int ithFanin = -1;
+  int jthFanin = -1;
+  for (int i = 0; i < fainNum; ++i) {
+    if (strcmp(piNames[i], Abc_ObjName(Abc_NtkPi(pNtk, i_th))) == 0)
+      ithFanin = i;
+    if (strcmp(piNames[i], Abc_ObjName(Abc_NtkPi(pNtk, j_th))) == 0)
+      jthFanin = i;
+  }
+  if (ithFanin == -1 && jthFanin == -1) {
+    printf("symmetric\n");
+    return;
+  }
+  else if (ithFanin == -1) { // i is don't care
+    Cof_iBar_j = Cudd_Cofactor(dd, bFunc, Cudd_bddIthVar(dd, jthFanin));             Cudd_Ref(Cof_iBar_j);
+    Cof_jBar_i = Cudd_Cofactor(dd, bFunc, Cudd_Not(Cudd_bddIthVar(dd, jthFanin)));   Cudd_Ref(Cof_jBar_i);
+  }
+  else if (jthFanin == -1) { // j is don't care
+    Cof_iBar_j = Cudd_Cofactor(dd, bFunc, Cudd_Not(Cudd_bddIthVar(dd, ithFanin)));   Cudd_Ref(Cof_iBar_j);
+    Cof_jBar_i = Cudd_Cofactor(dd, bFunc, Cudd_bddIthVar(dd, ithFanin));             Cudd_Ref(Cof_jBar_i);
+  }
+  else {
+    // ithVar and jthVar are both in k's fanin, consider the cofactor
+    DdNode* cube_iBar_j = Cudd_bddAnd(dd, Cudd_Not(Cudd_bddIthVar(dd, ithFanin)), Cudd_bddIthVar(dd, jthFanin));   Cudd_Ref(cube_iBar_j);
+    DdNode* cube_jBar_i = Cudd_bddAnd(dd, Cudd_Not(Cudd_bddIthVar(dd, jthFanin)), Cudd_bddIthVar(dd, ithFanin));   Cudd_Ref(cube_jBar_i);
+    Cof_iBar_j = Cudd_Cofactor(dd, bFunc, cube_iBar_j);   Cudd_Ref(Cof_iBar_j);
+    Cof_jBar_i = Cudd_Cofactor(dd, bFunc, cube_jBar_i);   Cudd_Ref(Cof_jBar_i);
+    Cudd_RecursiveDeref(dd, cube_iBar_j);
+    Cudd_RecursiveDeref(dd, cube_jBar_i);
+  }
+  if (Cof_iBar_j == Cof_jBar_i) {
+    printf("symmetric\n");
+  }
+  else {
+    printf("asymmetric\n");
+    // TODO: how to get cex
+    DdNode* XOR = Cudd_bddXor(dd, Cof_iBar_j, Cof_jBar_i);   cuddRef(XOR);
+    char* cubeString = new char[dd->size];
+    Cudd_bddPickOneCube(dd, XOR, cubeString); // string is in the order of bddVar, use piName to map 
+    std::vector<char*> bddPiNames = std::vector<char*>(piNames, piNames+fainNum);
+    Lsv_SymBddCubeString2PrintCex(pNtk, bddPiNames, cubeString, i_th, j_th);
+
+    delete[] cubeString;
+    Cudd_RecursiveDeref(dd, XOR);
+  }
+
+  Cudd_RecursiveDeref(dd, Cof_jBar_i);
+  Cudd_RecursiveDeref(dd, Cof_iBar_j);
+  Cudd_RecursiveDeref(dd, bFunc);
+  return;
+}
+
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  int i_th, j_th, k_th;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  if (argc != 4)
+    goto usage;
+  k_th = atoi(argv[1]);
+  i_th = atoi(argv[2]);
+  j_th = atoi(argv[3]);
+  Lsv_SymBdd(pNtk, k_th, i_th, j_th);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+  Abc_Print(-2, "usage: lsv_sym_bdd <k> <i> <j>\n");
+  Abc_Print(-2, "\t        whether k-th output is symmetric in i-th and j-th inputs by BDD method\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+/* lsv_sym_bdd end */
+
+/* lsv_sym_sat Command */
+void Lsv_SymSat(Abc_Ntk_t* pNtk, int k_th, int i_th, int j_th) {
+  if (!Abc_NtkIsStrash(pNtk)) {
+    printf("Error: This command is only applicable to strashed networks.\n");
+    return;
+  }
+  if (Abc_NtkPoNum(pNtk) <= k_th) {
+    printf("Error: k(%d) is larger than num of Po\n", k_th);
+    return;
+  }
+  if (Abc_NtkPiNum(pNtk) <= i_th) {
+    printf("Error: i(%d) is larger than num of Pi\n", i_th);
+    return;
+  }
+  if (Abc_NtkPiNum(pNtk) <= j_th) {
+    printf("Error: j(%d) is larger than num of Pi\n", j_th);
+    return;
+  }
+  if (i_th == j_th) {
+    printf("symmetric\n");
+    return;
+  }
+  Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k_th);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+  char pNodeName[1000];
+  sprintf(pNodeName, "%dth_PO_Cone", k_th);
+  Abc_Ntk_t* pConeNtk = Abc_NtkCreateCone(pNtk, pRoot, pNodeName, 1);
+  Aig_Man_t* pMan = Abc_NtkToDar(pConeNtk, 0, 0); // 0 -> fExors, 0 -> fRegisters
+  Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+  sat_solver* pSat = sat_solver_new();
+  pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf, 1, 0 ); // 1 -> nFrames, 0 -> fInit 
+  int liftNum = Aig_ManObjNum(pMan);
+  // printf("liftNum: %d\n", liftNum);
+  Cnf_DataLift(pCnf, liftNum);
+  pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf, 1, 0 ); // 1 -> nFrames, 0 -> fInit 
+  
+  Abc_Obj_t* pObj;
+  int i;
+  // (p == q) = (p v ~q)^(~p v q)
+  lit clause[2];
+  Abc_NtkForEachPi(pConeNtk, pObj, i) {
+    if (i == i_th || i == j_th)
+      continue;
+    int var = pCnf->pVarNums[pObj->Id];
+    clause[0] = toLitCond(var          , 0); // p
+    clause[1] = toLitCond(var - liftNum, 1); // ~q
+    sat_solver_addclause(pSat, clause, clause+2);
+
+    clause[0] = toLitCond(var          , 1); // ~p
+    clause[1] = toLitCond(var - liftNum, 0); // q
+    sat_solver_addclause(pSat, clause, clause+2);
+  }
+  int var_i = pCnf->pVarNums[Abc_NtkPi(pConeNtk, i_th)->Id];
+  int var_j = pCnf->pVarNums[Abc_NtkPi(pConeNtk, j_th)->Id];
+
+  // printf("var_i: %d\n", var_i);
+  // printf("var_j: %d\n", var_j);
+
+  clause[0] = toLitCond(var_i, 0); // x_i = 1
+  sat_solver_addclause(pSat, clause, clause+1);
+  clause[0] = toLitCond(var_j, 1); // x_j = 0
+  sat_solver_addclause(pSat, clause, clause+1);
+  clause[0] = toLitCond(var_i - liftNum, 1); // x_i = 0
+  sat_solver_addclause(pSat, clause, clause+1);
+  clause[0] = toLitCond(var_j - liftNum, 0); // x_j = 1
+  sat_solver_addclause(pSat, clause, clause+1);
+
+  // (x_k != lift{x_k}) = (x_k v lift{x_k}) ^ (~x_k v ~lift{x_k})
+  // printf("PoNum: %d\n", Abc_NtkPoNum(pConeNtk));
+  pRoot = Abc_ObjFanin0(Abc_NtkPo(pConeNtk, 0));
+  int var_k = pCnf->pVarNums[pRoot->Id];
+  // printf("var_k: %d\n", var_k);
+  clause[0] = toLitCond(var_k          , 0); // x_k
+  clause[1] = toLitCond(var_k - liftNum, 0); // lift{x_k}
+  sat_solver_addclause(pSat, clause, clause+2);
+  clause[0] = toLitCond(var_k          , 1); // ~x_k
+  clause[1] = toLitCond(var_k - liftNum, 1); // ~lift{x_k}
+  sat_solver_addclause(pSat, clause, clause+2);
+
+  bool result = (l_True == sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0));
+  // printf("result: %d\n", result);
+  if (!result) {
+    printf("symmetric\n");
+  }
+  else {
+    printf("asymmetric\n");
+    Abc_NtkForEachPi(pConeNtk, pObj, i) {
+      int var = pCnf->pVarNums[pObj->Id];
+      printf("%d", sat_solver_var_value(pSat, var));
+    }
+    printf("\n");
+    Abc_NtkForEachPi(pConeNtk, pObj, i) {
+      int var = pCnf->pVarNums[pObj->Id];
+      printf("%d", sat_solver_var_value(pSat, var - liftNum));
+    }
+    printf("\n");
+  }
+  sat_solver_delete(pSat);
+  Cnf_DataFree(pCnf);
+  Aig_ManStop(pMan);
+  Abc_NtkDelete(pConeNtk);
+}
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  int i_th, j_th, k_th;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  if (argc != 4)
+    goto usage;
+  k_th = atoi(argv[1]);
+  i_th = atoi(argv[2]);
+  j_th = atoi(argv[3]);
+  Lsv_SymSat(pNtk, k_th, i_th, j_th);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
+  Abc_Print(-2, "usage: lsv_sym_sat <k> <i> <j>\n");
+  Abc_Print(-2, "\t        whether k-th output is symmetric in i-th and j-th inputs by SAT method\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+/* lsv_sym_sat end */
+
+
+/* lsv_sym_all */
+void Lsv_SymAll(Abc_Ntk_t* pNtk, int k_th) {
+  if (!Abc_NtkIsStrash(pNtk)) {
+    printf("Error: This command is only applicable to strashed networks.\n");
+    return;
+  }
+  if (Abc_NtkPoNum(pNtk) <= k_th) {
+    printf("Error: k(%d) is larger than num of Po\n", k_th);
+    return;
+  }
+  Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k_th);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+  char pNodeName[1000];
+  sprintf(pNodeName, "%dth_PO_Cone", k_th);
+  Abc_Ntk_t* pConeNtk = Abc_NtkCreateCone(pNtk, pRoot, pNodeName, 1);
+  Aig_Man_t* pMan = Abc_NtkToDar(pConeNtk, 0, 0); // 0 -> fExors, 0 -> fRegisters
+  Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+  sat_solver* pSat = sat_solver_new();
+  pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf, 1, 0 ); // 1 -> nFrames, 0 -> fInit 
+  int liftNum = Aig_ManObjNum(pMan);
+  // printf("liftNum: %d\n", liftNum);
+  Cnf_DataLift(pCnf, liftNum);
+  pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf, 1, 0 ); // 1 -> nFrames, 0 -> fInit 
+  
+  std::vector<int> enableSymVar(Abc_NtkPiNum(pConeNtk));
+  Abc_Obj_t* pObj;
+  Abc_Obj_t* pObj2;
+  int i, j;
+  lit* clause = new lit[Abc_NtkPiNum(pConeNtk)+1];
+  Abc_NtkForEachPi(pConeNtk, pObj, i) {
+    enableSymVar[i] = sat_solver_addvar(pSat);
+  }
+  // x_i == x_i
+  Abc_NtkForEachPi(pConeNtk, pObj, i) {
+    int var = pCnf->pVarNums[pObj->Id];
+    clause[0] = toLitCond(var            , 0); // p
+    clause[1] = toLitCond(var - liftNum  , 1); // ~q
+    clause[2] = toLitCond(enableSymVar[i], 0); // enable
+    sat_solver_addclause(pSat, clause, clause+3);
+
+    clause[0] = toLitCond(var          , 1); // ~p
+    clause[1] = toLitCond(var - liftNum, 0); // q
+    clause[2] = toLitCond(enableSymVar[i], 0); // enable
+    sat_solver_addclause(pSat, clause, clause+3);
+  }
+
+  // Pi symmetric constraints and according enable variables
+  // i < j -> (x_i = 1, x_j = 0, lift{x_i} = 0, lift{x_j} = 1)
+  // (en_k ^ ~en_1     ^ ~en_2     ^ ... ^ ~en_{k-1}) -> ((x_k = 1) ^ (lift{x_k} = 0))
+  // CNF => (~en_k v en_1 v en_2 v ... v en_{k-1} v x_k) ^ (~en_k v en_1 v en_2 v ... v en_{k-1} v ~lift{x_k})
+  // (en_k ^ ~en_{k+1} ^ ~en_{k+2} ^ ... ^ ~en_n)     -> ((x_k = 0) ^ (lift{x_k} = 1))
+  // CNF => (~en_k v en_{k+1} v en_{k+2} v ... v en_n v ~x_k) ^ (~en_k v en_{k+1} v en_{k+2} v ... v en_n v lift{x_k})
+  int k, l;
+  Abc_NtkForEachPi(pConeNtk, pObj, k) {
+    int lift_kVar = pCnf->pVarNums[pObj->Id];
+    clause[0] = toLitCond(enableSymVar[k], 1); // ～en_k
+    Abc_NtkForEachPi(pConeNtk, pObj2, l) {
+      if (l == k) {
+        clause[l+1] = toLitCond(lift_kVar - liftNum, 0); // x_k
+        sat_solver_addclause(pSat, clause, clause + l+2);
+        clause[l+1] = toLitCond(lift_kVar          , 1); // ~lift{x_k}
+        sat_solver_addclause(pSat, clause, clause + l+2);
+      }
+      else if (l < k) {
+        clause[l+1] = toLitCond(enableSymVar[l], 0); // en_1, en_2, ..., en_{k-1}
+      }
+      else { // l > k
+        clause[l-k] = toLitCond(enableSymVar[l], 0); // en_{k+1}, en_{k+2}, ..., en_n
+      }
+    }
+    assert(l == Abc_NtkPiNum(pConeNtk));
+    clause[l-k] = toLitCond(lift_kVar - liftNum, 1); // ~x_k
+    sat_solver_addclause(pSat, clause, clause + l-k + 1);
+    clause[l-k] = toLitCond(lift_kVar          , 0); // lift{x_k}
+    sat_solver_addclause(pSat, clause, clause + l-k + 1);
+  }
+
+  // Po constraint
+  // (x_k != lift{x_k}) = (x_k v lift{x_k}) ^ (~x_k v ~lift{x_k})
+  pRoot = Abc_ObjFanin0(Abc_NtkPo(pConeNtk, 0));
+  int var_k = pCnf->pVarNums[pRoot->Id];
+  // printf("var_k: %d\n", var_k);
+  clause[0] = toLitCond(var_k          , 0); // x_k
+  clause[1] = toLitCond(var_k - liftNum, 0); // lift{x_k}
+  sat_solver_addclause(pSat, clause, clause+2);
+  clause[0] = toLitCond(var_k          , 1); // ~x_k
+  clause[1] = toLitCond(var_k - liftNum, 1); // ~lift{x_k}
+  sat_solver_addclause(pSat, clause, clause+2);
+
+  // for each (i,j) pairs, examine the symmetric relation
+  disjointSetInit(Abc_NtkPiNum(pConeNtk));
+  Abc_NtkForEachPi(pConeNtk, pObj, i) {
+    clause[i] = toLitCond(enableSymVar[i], 1); // ~en_i
+  }
+  Abc_NtkForEachPi(pConeNtk, pObj, i) {
+    Abc_NtkForEachPi(pConeNtk, pObj2, j) {
+      if (i >= j)
+        continue;
+      // (i, j) pair that i < j
+      if (disjointSetEqual(i, j)) {
+        printf("%d %d\n", i, j);
+        continue;
+      }
+      clause[i] = toLit(enableSymVar[i]);
+      clause[j] = toLit(enableSymVar[j]);
+      bool result = (l_True == sat_solver_solve(pSat, clause, clause+Abc_NtkPiNum(pConeNtk), 0, 0, 0, 0));
+      if (!result) { // UNSAT
+        printf("%d %d\n", i, j);
+        disjointSetMerge(i, j);
+      }
+      clause[i] = toLitCond(enableSymVar[i], 1);
+      clause[j] = toLitCond(enableSymVar[j], 1);
+    }
+  }
+  delete[] clause;
+  sat_solver_delete(pSat);
+  Cnf_DataFree(pCnf);
+  Aig_ManStop(pMan);
+  Abc_NtkDelete(pConeNtk);
+}
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  int k_th;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  if (argc != 2)
+    goto usage;
+  k_th = atoi(argv[1]);
+  Lsv_SymAll(pNtk, k_th);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_all [-h]\n");
+  Abc_Print(-2, "usage: lsv_sym_all <k>\n");
+  Abc_Print(-2, "\t        list all (i,j) pairs that i<j, k-th output is symmetric in i-th and j-th input by incremental SAT method\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+/* lsv_sym_all end */
