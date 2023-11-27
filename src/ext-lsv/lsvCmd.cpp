@@ -268,23 +268,20 @@ usage:
 ///                        PA2                                       ///
 ////////////////////////////////////////////////////////////////////////
 
-void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char** argv) {
-	int k = stoi(argv[1]);
-	int i = stoi(argv[2]);
-	int j = stoi(argv[3]);
+void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
 	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
-	
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
 	// total Fin number of pNtk
 	int CiNum = Abc_NtkCiNum(pNtk);
 	// Fin number of pPo (may be less)
-	int FaninNum = Abc_ObjFaninNum(pPo);
+	int FaninNum = Abc_ObjFaninNum(pRoot);
 
 	DdManager* dd = (DdManager*)pNtk->pManFunc;
 	char* inputName1 = Abc_ObjName(Abc_NtkPi(pNtk, i));
 	char* inputName2 = Abc_ObjName(Abc_NtkPi(pNtk, j));
-	char** vNamesIn = (char**) Abc_NodeGetFaninNames(pPo)->pArray;
-	DdNode* d1 = (DdNode*)pPo->pData;
-	DdNode* d2 = (DdNode*)pPo->pData;
+	char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+	DdNode* d1 = (DdNode*)pRoot->pData;
+	DdNode* d2 = (DdNode*)pRoot->pData;
 	Cudd_Ref(d1);
 	Cudd_Ref(d2);
 	for (int l = 0; l < FaninNum; ++l) {
@@ -375,15 +372,80 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char** argv) {
 
 }
 
-void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, char** argv) {
+void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
 
 }
 
 
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	int k, i, j;
+	int CiNum = Abc_NtkCiNum(pNtk);
+	int CoNum = Abc_NtkCoNum(pNtk);
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsBddLogic(pNtk)) {
+		Abc_Print(-1, "Network is not logic BDD networks (run \"collapse\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong argument amount.\n");
+		return 1;
+	}
+	try {
+		k = stoi(argv[1]);
+		i = stoi(argv[2]);
+		j = stoi(argv[3]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	if (i < 0 || i >= CiNum) {
+		Abc_Print(-1, "i exceeds range.\n");
+		return 1;
+	}
+	if (j < 0 || j >= CiNum) {
+		Abc_Print(-1, "j exceeds range.\n");
+		return 1;
+	}
+	if (i == j) {
+		Abc_Print(-1, "i, j are the same.\n");
+		return 1;
+	}
+	
+	Lsv_NtkSymBdd(pNtk, k, i, j);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+	Abc_Print(-2, "\t        check if i j symmetric to k with bdd\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
 
 int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
 	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
 	int c;
+	int k, i, j;
+	int CiNum = Abc_NtkCiNum(pNtk);
+	int CoNum = Abc_NtkCoNum(pNtk);
 	Extra_UtilGetoptReset();
 	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
 		switch (c) {
@@ -405,46 +467,39 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
 		Abc_Print(-1, "Wrong input!!!\n");
 		return 1;
 	}
-	Lsv_NtkSymSat(pNtk, argv);
+	try {
+		k = stoi(argv[1]);
+		i = stoi(argv[2]);
+		j = stoi(argv[3]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	if (i < 0 || i >= CiNum) {
+		Abc_Print(-1, "i exceeds range.\n");
+		return 1;
+	}
+	if (j < 0 || j >= CiNum) {
+		Abc_Print(-1, "j exceeds range.\n");
+		return 1;
+	}
+	if (i == j) {
+		Abc_Print(-1, "i, j are the same.\n");
+		return 1;
+	}
+	
+	Lsv_NtkSymSat(pNtk, k, i, j);
 	return 0;
 
 usage:
-	Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
-	Abc_Print(-2, "\t        simulate the Ntk with aig\n");
+	Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
+	Abc_Print(-2, "\t        check if i j symmetric to k with sat\n");
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
 
-int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
-	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-	int c;
-	Extra_UtilGetoptReset();
-	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
-		switch (c) {
-			case 'h':
-				goto usage;
-			default:
-				goto usage;
-		}
-	}
-	if (!pNtk) {
-		Abc_Print(-1, "Empty network.\n");
-		return 1;
-	}
-	if (!Abc_NtkIsBddLogic(pNtk)) {
-		Abc_Print(-1, "Network is not logic BDD networks (run \"collapse\").\n");
-		return 1;
-	}
-	if (argc != 4) {
-		Abc_Print(-1, "Wrong input!!!\n");
-		return 1;
-	}
-	Lsv_NtkSymBdd(pNtk, argv);
-	return 0;
-
-usage:
-	Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
-	Abc_Print(-2, "\t        simulate the Ntk with bdd\n");
-	Abc_Print(-2, "\t-h    : print the command usage\n");
-	return 1;
-}
