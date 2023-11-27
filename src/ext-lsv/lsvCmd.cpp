@@ -510,6 +510,8 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, char* output, char* input1, char* input2) {
           Cudd_RecursiveDeref(dd, temp2);
           temp1 = Cudd_Cofactor( dd, temp1_3, Cudd_Not(dd->vars[record]) );
           temp2 = Cudd_Cofactor( dd, temp2_3, Cudd_Not(dd->vars[record]) );
+          Cudd_Ref(temp1);
+          Cudd_Ref(temp2);
           pattern1 += "0";
           pattern2 += "0";
         }
@@ -777,6 +779,9 @@ void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, char* output) {
         for (int temp = 0; temp < Abc_NtkCiNum(pNtk); temp++) {
           sat_solver_pop(solver);
         }
+      }
+      else if (!mark_i && !mark_j) {
+        printf("%d %d\n", i, j);
       }
     }
   }
