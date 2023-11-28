@@ -7,6 +7,7 @@
 #include "sat/cnf/cnf.h"
 
 #include <unordered_map>
+#include <unordered_set>
 #include <fstream>
 #include <vector>
 
@@ -379,43 +380,71 @@ void Lsv_CheckSymmetryBDD(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     Cudd_Ref(funcNode);
     DdNode *xiNode;
     DdNode *xjNode;
-    DdNode *funcNodeCofactor1;
-    DdNode *funcNodeCofactor2;
+    DdNode *xiNotNode;
+    DdNode *xjNotNode;
+    DdNode *funcNodeCofactor1, *funcNodeCofactor1i;
+    DdNode *funcNodeCofactor2, *funcNodeCofactor2i;
 
     bool is_symmetric = false;
     if ( xi != -1 && xj != -1 ) {
         xiNode = Cudd_bddIthVar(dd, xi);
-        xjNode = Cudd_bddIthVar(dd, xj);
         Cudd_Ref(xiNode);
+        xjNode = Cudd_bddIthVar(dd, xj);
         Cudd_Ref(xjNode);
-        funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xiNode);
-        funcNodeCofactor1 = Cudd_Cofactor(dd, funcNodeCofactor1, Cudd_Not(xjNode));
-        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
-        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNodeCofactor2, xjNode);
+        xiNotNode = Cudd_Not(xiNode);
+        Cudd_Ref(xiNotNode);
+        xjNotNode = Cudd_Not(xjNode);
+        Cudd_Ref(xjNotNode);
+
+        funcNodeCofactor1i = Cudd_Cofactor(dd, funcNode, xiNode);
+        Cudd_Ref(funcNodeCofactor1i);
+        funcNodeCofactor1 = Cudd_Cofactor(dd, funcNodeCofactor1i, xjNotNode);
+        Cudd_Ref(funcNodeCofactor1);
+
+        funcNodeCofactor2i = Cudd_Cofactor(dd, funcNode, xiNotNode);
+        Cudd_Ref(funcNodeCofactor2i);
+        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNodeCofactor2i, xjNode);
+        Cudd_Ref(funcNodeCofactor2);
+
         Cudd_RecursiveDeref(dd, xiNode);
         Cudd_RecursiveDeref(dd, xjNode);
-        Cudd_Ref(funcNodeCofactor1);
-        Cudd_Ref(funcNodeCofactor2);
+        Cudd_RecursiveDeref(dd, xiNotNode);
+        Cudd_RecursiveDeref(dd, xjNotNode);
+        Cudd_RecursiveDeref(dd, funcNodeCofactor1i);
+        Cudd_RecursiveDeref(dd, funcNodeCofactor2i);
+
         is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else if ( xi == -1 && xj != -1 ) {
         xjNode = Cudd_bddIthVar(dd, xj);
         Cudd_Ref(xjNode);
+        xjNotNode = Cudd_Not(xjNode);
+        Cudd_Ref(xjNotNode);
+
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xjNode);
-        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xjNode));
-        Cudd_RecursiveDeref(dd, xjNode);
         Cudd_Ref(funcNodeCofactor1);
+        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, xjNotNode);
         Cudd_Ref(funcNodeCofactor2);
+
+        Cudd_RecursiveDeref(dd, xjNode);
+        Cudd_RecursiveDeref(dd, xjNotNode);
+
         is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else if ( xi != -1 && xj == -1 ) {
         xiNode = Cudd_bddIthVar(dd, xi);
         Cudd_Ref(xiNode);
+        xiNotNode = Cudd_Not(xiNode);
+        Cudd_Ref(xiNotNode);
+
         funcNodeCofactor1 = Cudd_Cofactor(dd, funcNode, xiNode);
-        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, Cudd_Not(xiNode));
-        Cudd_RecursiveDeref(dd, xiNode);
         Cudd_Ref(funcNodeCofactor1);
+        funcNodeCofactor2 = Cudd_Cofactor(dd, funcNode, xiNotNode);
         Cudd_Ref(funcNodeCofactor2);
+
+        Cudd_RecursiveDeref(dd, xiNode);
+        Cudd_RecursiveDeref(dd, xiNotNode);
+
         is_symmetric = ( funcNodeCofactor1 == funcNodeCofactor2 );
     }
     else {
@@ -584,28 +613,11 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
     int i;
     Abc_Obj_t *pObj;
     // printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
-    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 0);
+    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 1);
 
-    char *xiName = Abc_ObjName(Abc_NtkPi(pNtk, xi_pos));
-    char *xjName = Abc_ObjName(Abc_NtkPi(pNtk, xj_pos));
-
-    Abc_Obj_t *pXi = nullptr;
-    Abc_Obj_t *pXj = nullptr;
+    Abc_Obj_t *pXi = Abc_NtkPi(pNtkTar, xi_pos);
+    Abc_Obj_t *pXj = Abc_NtkPi(pNtkTar, xj_pos);
     Abc_Obj_t *pYk = Abc_ObjFanin0(Abc_NtkPo(pNtkTar, 0));
-
-    Abc_NtkForEachPi(pNtkTar, pObj, i) {
-        if ( strcmp(Abc_ObjName(pObj), xiName) == 0 ) {
-            pXi = pObj;
-        }
-        else if ( strcmp(Abc_ObjName(pObj), xjName) == 0 ) {
-            pXj = pObj;
-        }
-    }
-
-    if ( pXi == nullptr && pXj == nullptr ) {
-        printf("symmetric\n");
-        return;
-    }
 
     Aig_Man_t *pMan = Abc_NtkToDar(pNtkTar, 0, 0);
 
@@ -625,16 +637,10 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         int Var1, Var2;
 
         if ( pObj == pXi ) {
-            if ( pXj == nullptr ) {
-                continue;
-            }
             Var1 = pCnf->pVarNums[pXi->Id];
             Var2 = pCnf->pVarNums[pXj->Id] + pCnf->nVars;
         }
         else if ( pObj == pXj ) {
-            if ( pXi == nullptr ) {
-                continue;
-            }
             Var1 = pCnf->pVarNums[pXj->Id];
             Var2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars;
         }
@@ -654,42 +660,16 @@ void Lsv_CheckSymmetrySAT(Abc_Ntk_t *pNtk, int yk, int xi_pos, int xj_pos) {
         sat_solver_addclause(pSat, Lits, Lits + 2);
     }
 
-    // handle xi or xj does not exist
-    if ( pXi == nullptr ) {
-        int Var1 = pCnf->pVarNums[pXj->Id];
-        int Var2 = Var1 + pCnf->nVars;
-        printf("Xi not included\n");
-        lit Lit;
-
-        Lit = toLitCond(Var1, 0);
-        sat_solver_addclause(pSat, &Lit, &Lit + 1);
-
-        Lit = toLitCond(Var2, 1);
-        sat_solver_addclause(pSat, &Lit, &Lit + 1);
-    }
-    else if ( pXj == nullptr ) {
-        int Var1 = pCnf->pVarNums[pXi->Id];
-        int Var2 = Var1 + pCnf->nVars;
-        printf("Xj not included\n");
-        lit Lit;
-
-        Lit = toLitCond(Var1, 0);
-        sat_solver_addclause(pSat, &Lit, &Lit + 1);
-
-        Lit = toLitCond(Var2, 1);
-        sat_solver_addclause(pSat, &Lit, &Lit + 1);
-    }
-
     // Var(y1) xor Var(y2)
     int VarY1 = pCnf->pVarNums[pYk->Id];
     int VarY2 = VarY1 + pCnf->nVars;
     int xorVar = sat_solver_addvar(pSat);
     sat_solver_add_xor(pSat, xorVar, VarY1, VarY2, 0);
     lit xorLit = toLitCond(xorVar, 0);
-    sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
+    // sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
 
     // run SAT solver
-    int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+    int status = sat_solver_solve(pSat, &xorLit, &xorLit + 1, 0, 0, 0, 0);
 
     if ( status == l_True ) {
         printf("asymmetric\n");
@@ -812,7 +792,7 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
     int i;
     Abc_Obj_t *pObj;
     // printf("%s\n", Abc_ObjName(Abc_NtkPo(pNtk, yk)));
-    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 0);
+    Abc_Ntk_t *pNtkTar = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, yk)), Abc_ObjName(Abc_NtkPo(pNtk, yk)), 1);
 
     int PINum = Abc_NtkPiNum(pNtk);
 
@@ -830,10 +810,9 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
     Cnf_DataWriteIntoSolverInt(pSat, pCnf2, 1, 0);
 
     // add control variable v_H
-    for ( i = 0; i < PINum; ++i ) {
+    for ( i = 0; i < pCnf->nVars; ++i ) {
         sat_solver_addvar(pSat);
     }
-
     // pSat->fPrintClause = 1;
 
     //  (a == b) => (a + b') * (a' + b)
@@ -883,7 +862,7 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
             Lits[3] = toLitCond(VarH2, 1);
             sat_solver_addclause(pSat, Lits, Lits + 4);
 
-            
+
             Var1 = pCnf->pVarNums[pXj->Id];
             Var2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars;
             VarH1 = Var1 + pCnf->nVars * 2;
@@ -909,21 +888,29 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
     int xorVar = sat_solver_addvar(pSat);
     sat_solver_add_xor(pSat, xorVar, VarY1, VarY2, 0);
     lit xorLit = toLitCond(xorVar, 0);
-    sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
+    // sat_solver_addclause(pSat, &xorLit, &xorLit + 1);
 
-    
-    
+    std::vector< std::unordered_set<int> > symmetric_pairs(PINum);
+
     // run SAT solver
     for ( int xi = 0; xi < PINum - 1; ++xi ) {
+        std::vector<int> pairs(symmetric_pairs[xi].begin(), symmetric_pairs[xi].end());
+        for ( int id = 0; id < pairs.size(); ++id ) {
+            int p = pairs[id];
+            // add elements in symmetric_pairs[p] to symmetric_pairs[xi]
+            symmetric_pairs[xi].insert(symmetric_pairs[p].begin(), symmetric_pairs[p].end());
+        }
         for ( int xj = xi + 1; xj < PINum; ++xj ) {
+            if ( symmetric_pairs[xi].count(xj) != 0 ) {
+                printf("%d %d\n", xi, xj);
+                symmetric_pairs[xi].insert(xj);
+                symmetric_pairs[xj].insert(xi);
+                continue;
+            }
             Abc_Obj_t *pXi = Abc_NtkPi(pNtkTar, xi);
             Abc_Obj_t *pXj = Abc_NtkPi(pNtkTar, xj);
 
-            int VarH1, VarH2;
-            lit constraints[PINum];
-
-            VarH1 = pCnf->pVarNums[pXi->Id] + pCnf->nVars * 2;
-            VarH2 = pCnf->pVarNums[pXi->Id] + pCnf->nVars * 2;
+            lit constraints[PINum + 1];
 
             for ( int hi = 0; hi < PINum; ++hi ) {
                 Abc_Obj_t *pHi = Abc_NtkPi(pNtkTar, hi);
@@ -935,15 +922,18 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
                     constraints[hi] = toLitCond(VarHi, 1); // constraint Hi == 0
                 }
             }
-            
-            int status = sat_solver_solve(pSat, constraints, constraints + PINum, 0, 0, 0, 0);
+            constraints[PINum] = xorLit; // constraint y1 xor y2 == 0 (symmetric)
+
+            int status = sat_solver_solve(pSat, constraints, constraints + PINum + 1, 0, 0, 0, 0);
 
             if ( status == l_True ) {
-                printf("satifiable\n");
+                // printf("satifiable\n");
             }
             else if ( status == l_False ) {
-                printf("unsatisfiable\n");
+                // printf("unsatisfiable\n");
                 printf("%d %d\n", xi, xj);
+                symmetric_pairs[xi].insert(xj);
+                symmetric_pairs[xj].insert(xi);
             }
 
             // Abc_NtkForEachObj(pNtkTar, pObj, i) {
@@ -954,7 +944,7 @@ void Lsv_CheckSymmetryALL(Abc_Ntk_t *pNtk, int yk) {
             //     printf("%d: %d\n", i, sat_solver_var_value(pSat, i));
             // }
 
-            // // Abc_NtkShow(pNtkTar, 0, 0, 1, 0);
+            // Abc_NtkShow(pNtkTar, 0, 0, 1, 0);
             // printf("Number of variables: %d\n", sat_solver_nvars(pSat));
             // printf("Number of clauses: %d\n", sat_solver_nclauses(pSat));
         }
