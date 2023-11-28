@@ -379,6 +379,64 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
 	Aig_Man_t* aig = Abc_NtkToDar(cone, 0, 0);
 	sat_solver* solver = sat_solver_new();
 	Cnf_Dat_t* cnf1 = Cnf_Derive(aig, 1);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf1, 1, 0);
+	
+	// create cnf2
+	Cnf_Dat_t* cnf2 = Cnf_Derive(aig, 1);
+	Cnf_DataLift(cnf2, cnf1->nVars);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf2, 1, 0);
+
+	Aig_Obj_t* pObj;
+	int l;
+	Aig_ManForEachCi(aig, pObj, l) {
+		if (l != i && l != j) {
+			lit arr1[] = {toLitCond(cnf1->pVarNums[pObj->Id], 1), toLitCond(cnf2->pVarNums[pObj->Id], 0)};
+			lit arr2[] = {toLitCond(cnf1->pVarNums[pObj->Id], 0), toLitCond(cnf2->pVarNums[pObj->Id], 1)};
+			sat_solver_addclause(solver, arr1, arr1 + 2);
+			sat_solver_addclause(solver, arr2, arr2 + 2);
+		} else {
+			lit arr1[] = {toLitCond(cnf1->pVarNums[pObj->Id], 1), toLitCond(cnf2->pVarNums[pObj->Id], 1)};
+			lit arr2[] = {toLitCond(cnf1->pVarNums[pObj->Id], 0), toLitCond(cnf2->pVarNums[pObj->Id], 0)};
+			sat_solver_addclause(solver, arr1, arr1 + 2);
+			sat_solver_addclause(solver, arr2, arr2 + 2);
+		}
+	}
+
+	// 
+	
+	Aig_Obj_t* xi = Aig_ManCi(aig, i);
+	Aig_Obj_t* xj = Aig_ManCi(aig, j);
+	lit arr1[] = {toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf1->pVarNums[xj->Id], 1)};
+	lit arr2[] = {toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf1->pVarNums[xj->Id], 0)};
+	lit arr3[] = {toLitCond(cnf2->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 1)};
+	lit arr4[] = {toLitCond(cnf2->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 0)};
+	sat_solver_addclause(solver, arr1, arr1 + 2);
+	sat_solver_addclause(solver, arr2, arr2 + 2);
+	sat_solver_addclause(solver, arr3, arr3 + 2);
+	sat_solver_addclause(solver, arr4, arr4 + 2);
+	
+	// add yk xor clause
+	Aig_Obj_t* yk = Aig_ManCo(aig, 0);
+	lit arr5[] = {toLitCond(cnf1->pVarNums[yk->Id], 1), toLitCond(cnf2->pVarNums[yk->Id], 1)};
+	lit arr6[] = {toLitCond(cnf1->pVarNums[yk->Id], 0), toLitCond(cnf2->pVarNums[yk->Id], 0)};
+	sat_solver_addclause(solver, arr5, arr5 + 2);
+	sat_solver_addclause(solver, arr6, arr6 + 2);
+
+	// solver solve
+	int result = sat_solver_solve_internal(solver);
+	if (result == -1) {
+		cout << "symmetric" << endl;
+	} else {
+		string s1, s2;
+		Aig_ManForEachCi(aig, pObj, l) {
+			s1 += to_string(sat_solver_var_value(solver, cnf1->pVarNums[pObj->Id]));
+			s2 += to_string(sat_solver_var_value(solver, cnf2->pVarNums[pObj->Id]));
+		}
+		cout << "asymmetric" << endl;
+		cout << s1 << endl;
+		cout << s2 << endl;
+	}
+
 }
 
 
