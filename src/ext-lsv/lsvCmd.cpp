@@ -16,7 +16,7 @@ static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
-static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
@@ -402,8 +402,7 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
 		}
 	}
 
-	// 
-	
+	// xi xor xj
 	Aig_Obj_t* xi = Aig_ManCi(aig, i);
 	Aig_Obj_t* xj = Aig_ManCi(aig, j);
 	lit arr1[] = {toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf1->pVarNums[xj->Id], 1)};
@@ -436,6 +435,40 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
 		cout << s1 << endl;
 		cout << s2 << endl;
 	}
+}
+
+void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, int k) {
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	Abc_Ntk_t* cone = Abc_NtkCreateCone(pNtk, pRoot, Abc_ObjName(pRoot), 1);
+	Aig_Man_t* aig = Abc_NtkToDar(cone, 0, 0);
+	sat_solver* solver = sat_solver_new();
+	Cnf_Dat_t* cnf1 = Cnf_Derive(aig, 1);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf1, 1, 0);
+	
+	// create cnf2
+	Cnf_Dat_t* cnf2 = Cnf_Derive(aig, 1);
+	Cnf_DataLift(cnf2, cnf1->nVars);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf2, 1, 0);
+
+	Aig_Obj_t* pObj;
+	int l;
+	Aig_ManForEachCi(aig, pObj, l) {
+
+	}
+
+	// 
+	
+	
+	// add yk xor clause
+	Aig_Obj_t* yk = Aig_ManCo(aig, 0);
+	lit arr5[] = {toLitCond(cnf1->pVarNums[yk->Id], 1), toLitCond(cnf2->pVarNums[yk->Id], 1)};
+	lit arr6[] = {toLitCond(cnf1->pVarNums[yk->Id], 0), toLitCond(cnf2->pVarNums[yk->Id], 0)};
+	sat_solver_addclause(solver, arr5, arr5 + 2);
+	sat_solver_addclause(solver, arr6, arr6 + 2);
+
+	// solver solve
+	int result = sat_solver_solve_internal(solver);
 
 }
 
@@ -562,6 +595,54 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
 usage:
 	Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
 	Abc_Print(-2, "\t        check if i j symmetric to k with sat\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	int k;
+	int CoNum = Abc_NtkCoNum(pNtk);
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsStrash(pNtk)) {
+		Abc_Print(-1, "Network is not logic AIG networks (run \"strash\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong input!!!\n");
+		return 1;
+	}
+	try {
+		k = stoi(argv[1]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	
+	Lsv_NtkSymAll(pNtk, k);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_all [-h]\n");
+	Abc_Print(-2, "\t        find all i j symmetric pair to k with sat\n");
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
