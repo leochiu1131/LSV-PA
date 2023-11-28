@@ -1,0 +1,7 @@
+.model mul 
+.inputs x0 x1 x2 x3 x4
+.outputs y0
+.names x0 x1 x2 x3 x4 y0
+111-- 1
+---11 1
+.end
