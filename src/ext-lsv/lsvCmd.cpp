@@ -501,10 +501,11 @@ void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, int k) {
 
 	bool symArr[Abc_NtkCiNum(pNtk)][Abc_NtkCiNum(pNtk)];
 	memset(symArr, false, sizeof(symArr));
+
 	// solver solve i, j
 	for (i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
 		for (j = i + 1; j < Abc_NtkCiNum(pNtk); ++j) {
-
+			
 			// find if i, j symmetry
 			bool canCont = false;
 			for (int a = 0; a < i; ++a) {
@@ -518,21 +519,12 @@ void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, int k) {
 			}
 			if (canCont) continue;
 
-			for (int a = 0; a < Abc_NtkCiNum(pNtk); ++a) {
-				if (a == i || a == j) {
-					sat_solver_push(solver, toLitCond(vhArr[a], 0));
-				} else {
-					sat_solver_push(solver, toLitCond(vhArr[a], 1));
-				}
-			}
-			int result = sat_solver_solve_internal(solver);
+			lit arr7[] = { toLitCond(vhArr[i], 0), toLitCond(vhArr[j], 0)};
+			int result = sat_solver_solve(solver, arr7, arr7 + 2, 0, 0, 0, 0);
 			if (result == -1) {
 				cout << i << " " << j << endl;
 				symArr[i][j] = true;
 				symArr[j][i] = true;
-			}
-			for (int a = 0; a < Abc_NtkCiNum(pNtk); ++a) {
-				sat_solver_pop(solver);
 			}
 		}
 	}
