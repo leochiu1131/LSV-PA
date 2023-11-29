@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <unordered_set>
 #include <stdlib.h>
 
 extern "C"{
@@ -44,6 +45,10 @@ static int Abc_CommandLSVPallSimAIG   ( Abc_Frame_t *pAbc, int argc, char **argv
 // Added function for PA#2
 static int Abc_CommandLSVSymBDD   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
 static int Abc_CommandLSVSymSAT   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+
+void displayAIGMan(Aig_Man_t *pMan);
+void displayCNFDat(Cnf_Dat_t *pCnf);
+void displaySATSolver(sat_solver_t *ss);
 
 void conductSimulation(Abc_Ntk_t *pNtk, Abc_Obj_t *pObj, bool simulaitonAct[], unsigned **simulationarr, int simArrWid);
 
@@ -296,64 +301,217 @@ static int Abc_CommandLSVSymSAT( Abc_Frame_t *pAbc, int argc, char **argv ){
         return 1;
     }
 
-
-
+	// printf("Original Ntk: \n");
+	// Lsv_NtkPrintNodes(pNtk);
 
 	Abc_Obj_t *pCo = Abc_NtkCo(pNtk, inK);
-	Abc_Ntk_t *pNtk_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pCo), Abc_ObjName(pCo), 0);
-
-	int conePiCount = Abc_NtkPiNum(pNtk_cone);
-
-	Abc_NtkPrintStats(pNtk_cone, 0,0,0,0,0,0,0,0,0,0);
+	//Extract the Cone of Yk
+	Abc_Ntk_t *pNtk_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pCo), Abc_ObjName(pCo), 1);
+	// derives an equivalent Aig_Man_t (global AIG circuit) from an Abc_Ntk_t network.
+	Aig_Man_t *pMan = Abc_NtkToDar(pNtk_cone, 0, 0);
+	// displayAIGMan(pMan);
 	
-	Aig_Man_t *AigMan1 = Abc_NtkToDar(pNtk_cone, 0, 0);
-	Aig_Man_t *AigMan2 = Abc_NtkToDar(pNtk_cone, 0, 0);
+	// These stores the AIG I/O indexes
+	std::vector<int> cinIdxvec; 
+	int cinIdxi = inI + 1, cinIdxj = inJ + 1;
+	int coutIdx;
+	int twinDistance;
 	
-	Aig_Obj_t **pPi1 = ABC_ALLOC(Aig_Obj_t*, conePiCount);
-	Aig_Obj_t **pPi2 = ABC_ALLOC(Aig_Obj_t*, conePiCount);
-
-	// printf("Man ObjNum Max: %d/%d\n", Aig_ManObjNumMax(AigMan1) + Aig_ManObjNumMax(AigMan2));
-	Aig_Man_t *pAig = Aig_ManStart(Aig_ManObjNumMax(AigMan1) + Aig_ManObjNumMax(AigMan2));
-
-	
-	int idx;
-	Aig_Obj_t *pObj;
-	// Add Aig1 to Constructed AIG 
-	Aig_ManConst1(AigMan1)->pData = Aig_ManConst1(pAig);
-	Aig_ManForEachPiSeq(AigMan1, pObj, idx){
-		pObj->pData = Aig_ObjCreateCi(pAig);
-		pPi1[idx] = (Aig_Obj_t *)pObj->pData;
-	}
-	Aig_ManForEachNode(pAig, pObj, idx){
-		pObj->pData = Aig_And(pAig, Aig_ObjChild0Copy(pObj), Aig_ObjChild1Copy(pObj));
-	}
-
-	printf("1: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
-	// Add Aig2 to Constructed AIG 
-	Aig_ManConst1(AigMan2)->pData = Aig_ManConst1(pAig);
-	Aig_ManForEachPiSeq(AigMan2, pObj, idx){
-		pObj->pData = Aig_ObjCreateCi(pAig);
-		pPi2[idx] = (Aig_Obj_t *)pObj->pData;
-	}
-	Aig_ManForEachNode(pAig, pObj, idx){
-		pObj->pData = Aig_And(pAig, Aig_ObjChild0Copy(pObj), Aig_ObjChild1Copy(pObj));
-	}
-
-	printf("2: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
-
-	Aig_Obj_t *xoredAig = Aig_Exor(pAig, Aig_ObjChild0Copy(Aig_ManCo(AigMan1, 0)), Aig_ObjChild0Copy(Aig_ManCo(AigMan2, 0)));
-	Aig_ObjCreateCo(pAig, xoredAig);
-	Aig_ManCleanup(pAig);
+	std::vector <Aig_Obj_t *>cinObjvec;
+	std::vector <Aig_Obj_t *>cinObjIJ;
+	Aig_Obj_t *coutObj;
 
 	
+	// Extract Ci indexes
+	Aig_Obj_t *ppIndexes; int counterIdx;
+	Aig_ManForEachCi(pMan, ppIndexes, counterIdx){
+		int canIndex = Aig_ObjId(ppIndexes);
+		if(!(canIndex == cinIdxi || canIndex == cinIdxj)){
+			cinIdxvec.push_back(canIndex);
+			cinObjvec.push_back(ppIndexes);
+		}else{
+			cinObjIJ.push_back(ppIndexes);
+		}
+	}
+	
+	//Extract Co index
+	coutObj = ((Aig_Obj_t *)Vec_PtrEntry(pMan->vCos, 0));
+	coutIdx = Aig_ObjId(coutObj);
 
-	printf("3: Co/Ci: %d/%d\n", Aig_ManCoNum(pAig), Aig_ManCiNum(pAig));
 
-	// Constructed Xored AigGraph (pAig)
+	// Display indexes
+	// std::cout << "These are Cins: [" << cinIdxi << "] [" << cinIdxj << "] ";
+	// for(std::vector<int>::iterator it = cinIdxvec.begin(); it != cinIdxvec.end(); it++){
+	// 	std::cout << *it << " ";
+	// }
+	// std::cout << std::endl << "This is Cout: " << coutIdx << std::endl;
 
-	//TODO
+	// Initialise SAT Solver
+	sat_solver *sv = sat_solver_new();
+	// sv->fPrintClause = 1;
+	// sv->verbosity = 2;
+	// sv->fVerbose = 1;
+	
+	// obtain the corresponding CNF formula CA, which depends on variables V1,...,Vn
+	Cnf_Dat_t *cnfdat1 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+
+	// Readjust the indexes that map to PI/ SymPIs and Po
+	std::vector<int> cinAllIdxVec_Cnf;
+
+	std::vector<int> cinidxvec_Cnf;
+	int cinIdxi_Cnf, cinIdxj_Cnf;
+	int coutIdx_Cnf;
+
+	Aig_ManForEachCi(pMan, ppIndexes, counterIdx){
+		cinAllIdxVec_Cnf.push_back(cnfdat1->pVarNums[ppIndexes->Id]);
+	}
+
+	// std::cout << "Full PI order: ";
+	for(std::vector<int>::iterator it= cinAllIdxVec_Cnf.begin(); it != cinAllIdxVec_Cnf.end(); ++it){
+		// std::cout << *it << " ";
+	}
+	// std::cout << std::endl;
+
+	for(int i = 0; i < cinObjvec.size(); ++i){
+		Aig_Obj_t *payload = cinObjvec[i];
+		cinidxvec_Cnf.push_back(cnfdat1->pVarNums[payload->Id]);
+		// std::cout << i << "]" << payload->Id << " -> " << cnfdat1->pVarNums[payload->Id] << std::endl;
+	}
+	cinIdxi_Cnf = cnfdat1->pVarNums[cinObjIJ[0]->Id];
+	cinIdxj_Cnf = cnfdat1->pVarNums[cinObjIJ[1]->Id];
+	coutIdx_Cnf = cnfdat1->pVarNums[coutObj->Id];
+	// std::cout << "SYM1: " << cinObjIJ[0]->Id << " -> " << cinIdxi_Cnf << std::endl;
+	// std::cout << "SYM2: " << cinObjIJ[1]->Id << " -> " << cinIdxj_Cnf << std::endl;
+	// std::cout << "OUT: " << coutObj->Id << " -> " << coutIdx_Cnf << std::endl;
+	
+
+	// add the CNF into the SAT solver.
+	// displayCNFDat(cnfdat1);
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat1, 1, 0);
+
+	// create another CNF formula CB that depends on different input variables V(n+1),...,V(2n), add to solver.
+	Cnf_Dat_t *cnfdat2 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+	twinDistance = cnfdat1->nVars;
+	Cnf_DataLift(cnfdat2, twinDistance);
+	// displayCNFDat(cnfdat2);
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat2, 1, 0);
+
+	// This is the enable variable that is required
+	int envar = sat_solver_addvar(sv);
+	lit Lit[1];
+	Lit[0] = toLitCond(envar, 0);
+	int Cid = sat_solver_addclause(sv, Lit, Lit + 1);
+	assert(Cid);
+	// std::cout << "Added control enable var: " << envar << std::endl;
+
+	for (int i = 0; i < cinidxvec_Cnf.size(); i++){
+		sat_solver_add_buffer_enable(sv, cinidxvec_Cnf[i], cinidxvec_Cnf[i]+twinDistance, envar, 0);
+	}
+	sat_solver_add_buffer_enable(sv, cinIdxi_Cnf, cinIdxj_Cnf+twinDistance, envar, 0);
+	sat_solver_add_buffer_enable(sv, cinIdxj_Cnf, cinIdxi_Cnf+twinDistance, envar, 0);
+
+	sat_solver_add_buffer_enable(sv, coutIdx_Cnf, coutIdx_Cnf+twinDistance, envar, 1);
+
+	int solveAns = sat_solver_solve(sv, NULL, NULL, 0, 0, 0, 0);
+	if(solveAns == l_False){
+		printf("symmetric\n");
+		return 0;
+	}
+
+	// Start processing asymmetric scenarios
+	printf("asymmetric\n");
+	
+	// Two Counter examples are the size of Primary Inputs
+	int numPis = cinAllIdxVec_Cnf.size();
+	char ctrExample1[numPis+1] = "";
+	char ctrExample2[numPis+1] = "";
+	memset(ctrExample1, '0', numPis);
+	memset(ctrExample2, '0', numPis);
+
+	
+	// sat_solver_var_value
+	// for(std::vector<int>::iterator it= cinAllIdxVec_Cnf.begin(); it != cinAllIdxVec_Cnf.end(); ++it){
+
+	// 	std::cout << (*it) << ": " << sat_solver_var_value(sv, *it) << std::endl;
+	// }
+
+	for(int i = 0; i < cinAllIdxVec_Cnf.size(); ++i){
+		if(sat_solver_var_value(sv, cinAllIdxVec_Cnf[i]) == 0){
+			ctrExample1[i] = ctrExample2[i] = '0';
+		}else{
+			ctrExample1[i] = ctrExample2[i] = '1';
+		}
+	}
+	ctrExample1[inI] = '0';
+	ctrExample2[inI] = '1';
+	ctrExample1[inJ] = '1';
+	ctrExample2[inJ] = '0';
+
+	printf("%s\n", ctrExample1);
+	printf("%s\n", ctrExample2);
 
 	return 0;
+}
+
+void displayAIGMan(Aig_Man_t *pMan) {
+    int i;
+    Aig_Obj_t *pObj;
+
+    printf("Number of Nodes: %d\n", Aig_ManObjNum(pMan));
+	printf("Ci/Co: %d/%d\n", Aig_ManCiNum(pMan), Aig_ManCoNum(pMan));
+
+    Aig_ManForEachObj(pMan, pObj, i) {
+        // Print information for each node, e.g., pObj->Type, fanins, etc.
+        printf("Node-%d: ID = %d\n", i, pObj->Id);
+        printf("PI: %d, PO: %d\n", Aig_ObjIsCi(pObj), Aig_ObjIsCo(pObj));
+        if ( Aig_ObjFanin0(pObj) ) {
+            printf("Fanin0: ID = %d\n", Aig_ObjFanin0(pObj)->Id);
+        }
+        if ( Aig_ObjFanin1(pObj) ) {
+            printf("Fanin1: ID = %d\n", Aig_ObjFanin1(pObj)->Id);
+        }
+        printf("\n");
+    }
+}
+
+void displayCNFDat(Cnf_Dat_t *pCnf) {
+	printf("%d nVars, %d nLiterals, %d clauses\n", pCnf->nVars, pCnf->nLiterals, pCnf->nClauses);
+	printf("pVarNums:");
+	for(int i = 0; i < pCnf->nVars; ++i){
+		printf("%d ", pCnf->pVarNums[i]);
+	}
+	printf("\n");
+    for ( int i = 0; i < pCnf->nClauses; i++ ) {
+        int *pLit, *pStop;
+        for ( pLit = pCnf->pClauses[i], pStop = pCnf->pClauses[i + 1]; pLit < pStop; pLit++ ) {
+            printf("%d ", ( *pLit & 1 ) ? -( *pLit >> 1 ) : ( *pLit >> 1 ));
+        }
+        printf("\n");
+    }
+	for (int i=0; i < pCnf->nClauses; ++i){
+
+	}
+}
+
+void displaySATSolver(sat_solver_t *ss){
+	printf("%d nvars, %d nClauses", sat_solver_nvars(ss), sat_solver_nclauses(ss));
+
+	Sat_Mem_t *pMem = &(ss->Mem);
+	clause *c;
+	int i,k;
+	Sat_MemForEachClause(pMem, c, i, k){
+		clause_print_(c);
+	}
+	Sat_MemForEachClause2(pMem, c, i, k){
+		clause_print_(c);
+	}
+	// for(int i = 0; i < sat_solver_nclauses(ss); ++i){
+	// 	for(int j = 0; j < ss->wlists[i].size; ++j){
+	// 		std::cout << ss->wlists->ptr[j];
+	// 	}
+	// 	std::cout << std::endl;
+	// }
+	
 }
 
 
