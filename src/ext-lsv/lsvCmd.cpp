@@ -341,7 +341,20 @@ usage:
 
 // 2-1
 int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+  
+  // k = Pin of output, i, j = Pins of input variable
+  int k, i, j;
+  int i_bdd = -1, j_bdd = -1;
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  Abc_Obj_t* kth_Po;
+  Abc_Obj_t* pRoot;
+  DdManager* dd;
+  DdNode* ddnode, *cube_i, *cube_j, *cof_dd01, *cof_dd10, *XOR;
+  // vector<int> *Id2Order, *Order2Id;
+
+  Abc_Obj_t* pObj;
+  int i_Pi;
+
   int c;
   Extra_UtilGetoptReset();
   while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
@@ -363,13 +376,120 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 1;
   }
 
-  printf("Check if the code run correctly.\n");
+  if (argc != 4){
+    Abc_Print(-1, "Wrong input patterns.\n");
+    return 1;
+  }
+  else{
+    k = stoi(argv[1]);
+    i = stoi(argv[2]);
+    j = stoi(argv[3]);
+  }
+
+  // Ensure i < j and check if the patterns is valid.
+  if (i > j) swap(i, j);
+  else if (i == j){
+    Abc_Print(-1, "The two input variable should be different.\n");
+    return 1;
+  }
+
+  if (k >= Abc_NtkPoNum(pNtk)){
+    Abc_Print(-1, "Pin of output out of range %i.\n", Abc_NtkPoNum(pNtk));
+    return 1;
+  }
+
+  if (j >= Abc_NtkPiNum(pNtk)){
+    Abc_Print(-1, "Pin of input out of range %i.\n", Abc_NtkPiNum(pNtk));
+    return 1;
+  }
+
+  // Main process
+
+  kth_Po = Abc_NtkPo(pNtk, k);
+  pRoot = Abc_ObjFanin0(kth_Po);
+  dd = (DdManager*)pRoot->pNtk->pManFunc;
+  ddnode = (DdNode*)pRoot->pData;
+
+  Abc_ObjForEachFanin( pRoot, pObj, i_Pi){
+    if((pObj->Id-1) == i) i_bdd = i_Pi;
+    else if((pObj->Id-1) == j) j_bdd = i_Pi;
+  }
+
+  if((i_bdd==-1) && (j_bdd==-1)){ 
+    // Both i, j are not support of k
+    printf("symmetry\n");
+    return 0;
+  }else if((i_bdd==-1)){
+    // Only j is support of k
+    XOR = Cudd_bddBooleanDiff(dd, ddnode, j_bdd);
+    Cudd_Ref(XOR);
+  }else if((j_bdd==-1)){
+    // Only i is support of k
+    XOR = Cudd_bddBooleanDiff(dd, ddnode, i_bdd);
+    Cudd_Ref(XOR);
+  }else{
+    // Both of i, j are support of k
+    cube_i = Cudd_bddAnd( dd, Cudd_Not( dd->vars[j_bdd] ), dd->vars[i_bdd] );
+    cube_j = Cudd_bddAnd( dd, Cudd_Not( dd->vars[i_bdd] ), dd->vars[j_bdd] );
+
+    cof_dd01 = Cudd_Cofactor(dd, ddnode, cube_i);
+    cof_dd10 = Cudd_Cofactor(dd, ddnode, cube_j);
+
+    XOR = Cudd_bddXor(dd, cof_dd01, cof_dd10);
+  }
+
+  if(XOR == DD_ZERO(dd) || XOR == Cudd_Not(DD_ONE(dd))){
+    printf("symmetry\n");
+    return 0;
+  }else{
+    // Asymmetry, find counter example
+    // Reference: cudd_firstCube 
+    // http://eddiehung.github.io/dox-abc/de/dc1/cudd_8h.html#a139d8dd64955ecf3e2fd4c5d6ceeebb4
+    int counter_example[Abc_NtkPiNum(pNtk)];
+    int** cube = new(int*);
+    CUDD_VALUE_TYPE* value = new(CUDD_VALUE_TYPE);
+
+    Cudd_FirstCube(dd, XOR, cube, value);
+    // For cube:
+    // 0: complemented literal, 1: uncomplemented literal, 2:r don't care. 
+
+    // for(int _i=0; _i< dd->size; _i++) printf("%i ", cube[0][_i]);
+    // printf("\n");
+    
+    Abc_ObjForEachFanin( pRoot, pObj, i_Pi){
+        if(cube[0][i_Pi] == 2){
+          counter_example[pObj->Id-1] = 1;
+        }else{
+          counter_example[pObj->Id-1] = cube[0][i_Pi];
+        }
+      }
+    
+    printf("asymmetry\n");
+    //Pattern 0 
+    for(int _i = 0; _i < Abc_NtkPiNum(pNtk); _i++){
+      if(_i == i) printf("0");
+      else if(_i == j) printf("1");
+      else printf("%i", counter_example[_i]);
+    }
+    printf("\n");
+    for(int _i = 0; _i < Abc_NtkPiNum(pNtk); _i++){
+      if(_i == i) printf("1");
+      else if(_i == j) printf("0");
+      else printf("%i", counter_example[_i]);
+    }
+    printf("\n");
+  }
+
+  
+
+
   return 0;
 
 usage:
-  Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
-  Abc_Print(-2, "\t        Check if the circuit is symmetry on variables.\n");
-  Abc_Print(-2, "\t-h    : print the command usage\n");
+  Abc_Print(-2, "usage: lsv_sym_bdd <k> <i> <j> [-h]\n");
+  Abc_Print(-2, "       Check if the circuit is symmetry on variables.\n");
+  Abc_Print(-2, "       <k> : the output pin index [-h]\n");
+  Abc_Print(-2, "       <i> <j> : the intput pin indexes [-h]\n");
   return 1;
 }
 
