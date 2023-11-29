@@ -6,6 +6,8 @@
 #include "sat/cnf/cnf.h"
 #include "bdd/cudd/cudd.h"
 #include "bdd/cudd/cuddInt.h"
+#include <stdio.h>
+#include <string.h>
 using namespace std;
 
 extern "C" {
@@ -16,6 +18,7 @@ static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
@@ -24,6 +27,7 @@ void init(Abc_Frame_t* pAbc) {
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -287,23 +291,23 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
 	for (int l = 0; l < FaninNum; ++l) {
 		if (strcmp(inputName1, vNamesIn[l]) == 0) {
 			DdNode* temp1 = Cudd_Cofactor(dd, d1, dd->vars[l]);
+			Cudd_Ref(temp1);
 			DdNode* temp2 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[l]));
+			Cudd_Ref(temp2);
 			Cudd_RecursiveDeref(dd, d1);
-			Cudd_RecursiveDeref(dd, d2);
 			d1 = temp1;
+			Cudd_RecursiveDeref(dd, d2);
 			d2 = temp2;
-			Cudd_Ref(d1);
-			Cudd_Ref(d2);
 		}
 		if (strcmp(inputName2, vNamesIn[l]) == 0) {
 			DdNode* temp1 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[l]));
+			Cudd_Ref(temp1);
 			DdNode* temp2 = Cudd_Cofactor(dd, d2, dd->vars[l]);
+			Cudd_Ref(temp2);
 			Cudd_RecursiveDeref(dd, d1);
-			Cudd_RecursiveDeref(dd, d2);
 			d1 = temp1;
+			Cudd_RecursiveDeref(dd, d2);
 			d2 = temp2;
-			Cudd_Ref(d1);
-			Cudd_Ref(d2);
 		}
 	}
 
@@ -349,17 +353,18 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
 					d2 = temp2;
 					s1 += '1';
 					s2 += '1';
-				} else {
+				} 
+				else {
 					Cudd_RecursiveDeref(dd, temp1);
 					Cudd_RecursiveDeref(dd, temp2);
-					temp1 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[ddvar]));
-					temp2 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[ddvar]));
+					DdNode* temp3 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[ddvar]));
+					DdNode* temp4 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[ddvar]));
+					Cudd_Ref(temp3);
+					Cudd_Ref(temp4);
 					Cudd_RecursiveDeref(dd, d1);
 					Cudd_RecursiveDeref(dd, d2);
-					d1 = temp1;
-					d2 = temp2;
-					Cudd_Ref(d1);
-					Cudd_Ref(d2);
+					d1 = temp3;
+					d2 = temp4;
 					s1 += '0';
 					s2 += '0';
 				}
@@ -369,6 +374,9 @@ void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
 		cout << s1 << endl;
 		cout << s2 << endl;
 	}
+	Cudd_RecursiveDeref(dd, d1);
+	Cudd_RecursiveDeref(dd, d2);
+
 
 }
 
@@ -394,21 +402,17 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
 			lit arr2[] = {toLitCond(cnf1->pVarNums[pObj->Id], 0), toLitCond(cnf2->pVarNums[pObj->Id], 1)};
 			sat_solver_addclause(solver, arr1, arr1 + 2);
 			sat_solver_addclause(solver, arr2, arr2 + 2);
-		} else {
-			lit arr1[] = {toLitCond(cnf1->pVarNums[pObj->Id], 1), toLitCond(cnf2->pVarNums[pObj->Id], 1)};
-			lit arr2[] = {toLitCond(cnf1->pVarNums[pObj->Id], 0), toLitCond(cnf2->pVarNums[pObj->Id], 0)};
-			sat_solver_addclause(solver, arr1, arr1 + 2);
-			sat_solver_addclause(solver, arr2, arr2 + 2);
 		}
 	}
 
-	// xi xor xj
+	// va(xi) = vb(xj)
+	// va(xj) = vb(xj)
 	Aig_Obj_t* xi = Aig_ManCi(aig, i);
 	Aig_Obj_t* xj = Aig_ManCi(aig, j);
-	lit arr1[] = {toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf1->pVarNums[xj->Id], 1)};
-	lit arr2[] = {toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf1->pVarNums[xj->Id], 0)};
-	lit arr3[] = {toLitCond(cnf2->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 1)};
-	lit arr4[] = {toLitCond(cnf2->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 0)};
+	lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 1) };
+	lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 0) };
+	lit arr3[] = { toLitCond(cnf1->pVarNums[xj->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1) };
+	lit arr4[] = { toLitCond(cnf1->pVarNums[xj->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0) };
 	sat_solver_addclause(solver, arr1, arr1 + 2);
 	sat_solver_addclause(solver, arr2, arr2 + 2);
 	sat_solver_addclause(solver, arr3, arr3 + 2);
@@ -451,24 +455,87 @@ void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, int k) {
 	Cnf_DataLift(cnf2, cnf1->nVars);
 	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf2, 1, 0);
 
-	Aig_Obj_t* pObj;
-	int l;
-	Aig_ManForEachCi(aig, pObj, l) {
+	Aig_Obj_t* xi,* xj;
+	int i, j;
 
+
+
+	// vh arr
+	int vhArr[Abc_NtkCiNum(pNtk)];
+	for (i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
+		vhArr[i] = sat_solver_addvar(solver);
+	}
+	
+	// (va(t) = vb(t)) or vh(t)
+	Aig_ManForEachCi(aig, xi, i) {
+		lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1), toLitCond(vhArr[i], 0) };
+		lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0), toLitCond(vhArr[i], 0) };
+		sat_solver_addclause(solver, arr1, arr1 + 3);
+		sat_solver_addclause(solver, arr2, arr2 + 3);
 	}
 
-	// 
+	// (va(xi) = vb(xj)) or vh(xi)' or vh(xj)'
+	// (va(xj) = vb(xi)) or vh(xi)' or vh(xj)'
+	Aig_ManForEachCi(aig, xi, i) {
+		for (j = i + 1; (j < Vec_PtrSize(aig->vCis)) && (((xj) = (Aig_Obj_t *)Vec_PtrEntry(aig->vCis, j)), 1); j++) {
+			lit vhxiComp = toLitCond(vhArr[i], 1);
+			lit vhxjComp = toLitCond(vhArr[j], 1);
+			lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 1), vhxiComp, vhxjComp };
+			lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 0), vhxiComp, vhxjComp };
+			lit arr3[] = { toLitCond(cnf1->pVarNums[xj->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1), vhxiComp, vhxjComp };
+			lit arr4[] = { toLitCond(cnf1->pVarNums[xj->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0), vhxiComp, vhxjComp };
+			sat_solver_addclause(solver, arr1, arr1 + 4);
+			sat_solver_addclause(solver, arr2, arr2 + 4);
+			sat_solver_addclause(solver, arr3, arr3 + 4);
+			sat_solver_addclause(solver, arr4, arr4 + 4);
+		}
+	}
 	
-	
-	// add yk xor clause
+	// va(yk) xor vb(yk)
 	Aig_Obj_t* yk = Aig_ManCo(aig, 0);
 	lit arr5[] = {toLitCond(cnf1->pVarNums[yk->Id], 1), toLitCond(cnf2->pVarNums[yk->Id], 1)};
 	lit arr6[] = {toLitCond(cnf1->pVarNums[yk->Id], 0), toLitCond(cnf2->pVarNums[yk->Id], 0)};
 	sat_solver_addclause(solver, arr5, arr5 + 2);
 	sat_solver_addclause(solver, arr6, arr6 + 2);
 
-	// solver solve
-	int result = sat_solver_solve_internal(solver);
+
+	bool symArr[Abc_NtkCiNum(pNtk)][Abc_NtkCiNum(pNtk)];
+	memset(symArr, false, sizeof(symArr));
+	// solver solve i, j
+	for (i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
+		for (j = i + 1; j < Abc_NtkCiNum(pNtk); ++j) {
+
+			// find if i, j symmetry
+			bool canCont = false;
+			for (int a = 0; a < i; ++a) {
+				if (symArr[a][i] && symArr[a][j]) {
+					cout << i << " " << j << endl;
+					symArr[i][j] = true;
+					symArr[j][i] = true;
+					canCont = true;
+					break;
+				}
+			}
+			if (canCont) continue;
+
+			for (int a = 0; a < Abc_NtkCiNum(pNtk); ++a) {
+				if (a == i || a == j) {
+					sat_solver_push(solver, toLitCond(vhArr[a], 0));
+				} else {
+					sat_solver_push(solver, toLitCond(vhArr[a], 1));
+				}
+			}
+			int result = sat_solver_solve_internal(solver);
+			if (result == -1) {
+				cout << i << " " << j << endl;
+				symArr[i][j] = true;
+				symArr[j][i] = true;
+			}
+			for (int a = 0; a < Abc_NtkCiNum(pNtk); ++a) {
+				sat_solver_pop(solver);
+			}
+		}
+	}
 
 }
 
@@ -525,7 +592,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 		Abc_Print(-1, "i, j are the same.\n");
 		return 1;
 	}
-	
+	// if (i > j) swap(i, j);
 	Lsv_NtkSymBdd(pNtk, k, i, j);
 	return 0;
 
@@ -621,7 +688,7 @@ int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
 		Abc_Print(-1, "Network is not logic AIG networks (run \"strash\").\n");
 		return 1;
 	}
-	if (argc != 4) {
+	if (argc != 2) {
 		Abc_Print(-1, "Wrong input!!!\n");
 		return 1;
 	}
