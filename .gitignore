@@ -207,3 +207,7 @@ Temporary Items
 
 # Local History for Visual Studio Code
 .history/
+
+./demo.blif
+./test.blif
+./square.in
