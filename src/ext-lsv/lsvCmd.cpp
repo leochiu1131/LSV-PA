@@ -7,11 +7,13 @@
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBDD(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBDD, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBDD, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -264,6 +266,97 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
 usage:
   Abc_Print(-2, "usage: lsv_sim_aig [-h]\n");
   Abc_Print(-2, "\t        simulate Aig\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+
+void Lsv_SymBDD(Abc_Ntk_t* pNtk, Abc_Obj_t* pRoot, int out_i, int in_i1, int in_i2){
+  //
+  Abc_Ntk_t* ddNtk = pRoot->pNtk;
+  DdManager * temp_dd = (DdManager *)pRoot->pNtk->pManFunc;  
+  DdManager * dd = temp_dd;
+  DdNode* temp_ddnode = (DdNode *)pRoot->pData;
+  DdNode* ddnode = temp_ddnode;
+  //DdNode _ddnode = *ddnode;
+  //ddnode = &_ddnode;
+  Abc_Obj_t * pPi;
+  int i;
+  char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+
+  Abc_NtkForEachPi(pNtk, pPi, i){
+    // cofactor in_pat
+    //printf("%s - %s\n", Abc_ObjName(pRoot), Abc_ObjName(pPi));
+    for(int ddi=0;ddi<Abc_NodeGetFaninNames(pRoot)->nSize;ddi++){
+      if(isPartOf(Abc_ObjName(pPi), vNamesIn[ddi])){
+        if(in_pat[i]=='1'){
+          //printf("%d\n", 1);
+          ddnode = Cudd_Cofactor(dd, ddnode, dd->vars[ddi]);
+        }else{
+          //printf("%d\n", 0);
+          ddnode = Cudd_Cofactor(dd, ddnode, Cudd_Not(dd->vars[ddi]));
+        }
+        break;
+        //printf("%d / %d : %s \n", ddi, Abc_NtkPiNum(ddNtk), vNamesIn[ddi]);
+      }
+      //else printf("%s\n", vNamesIn[ddi]);
+    }
+    
+  }
+  // print result
+  int ans;
+  if(!Cudd_IsConstant(ddnode)) Abc_Print(-1, "Something Wrong.\n");
+  if(Cudd_IsComplement(ddnode))
+    ans = 0;
+  else
+    ans = 1;
+  //printf("%s: %d\n\n", Abc_ObjName(pRoot), ans);
+  printf("%d\n", ans);
+}
+
+int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  //Abc_Ntk_t* ppNtk = Abc_FrameReadNtk(pAbc);
+  //Abc_Ntk_t* pNtk = Abc_NtkDup(ppNtk);
+  int c;
+  char* in_pat;
+
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+
+  in_pat = argv[1]; ///
+  int out_i = int(argv[1]);
+  int in_i1 = int(argv[2]);
+  int in_i2 = int(argv[3]);
+  int ithPo;
+  Abc_Obj_t * pPo;
+  Abc_NtkForEachPo(pNtk, pPo, ithPo) {
+    printf("%s: ", Abc_ObjName(pPo));
+    Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+    assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+    //DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;  
+    //DdNode* ddnode = (DdNode *)pRoot->pData;
+    Lsv_SymBDD(pNtk, pRoot, out_i, in_i1, in_i2);
+  }
+
+  //Abc_NtkDelete(ppNtk);
+  
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+  Abc_Print(-2, "\t        symmetry test BDD\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
