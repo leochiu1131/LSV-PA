@@ -2,6 +2,11 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 
+#include "sat/cnf/cnf.h"
+extern "C"{
+	Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
+
 static int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -170,8 +175,50 @@ usage:
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
+void SymmetrySAT(Abc_Ntk_t* pNtk, int id_k, int id_i, int id_j){
+	int ithFI, ithPI, cnf_i = -1, cnf_j = -1;
+	Abc_Obj_t *pI, *pFI;
+	Abc_Obj_t* pPO = Abc_NtkPo(pNtk, id_k);
+	Abc_Obj_t* pPIi = Abc_NtkPi(pNtk, id_i);
+	Abc_Obj_t* pPIj = Abc_NtkPi(pNtk, id_j);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPO);
+	lit Literal[2];
+	
+	Abc_Ntk_t* pCone_k = Abc_NtkCreateCone(pNtk, pRoot, "cone_y_k", 1);
+	Aig_Man_t* pMan = Abc_NtkToDar(pCone_k, 0, 1);
+	sat_solver* pSAT = sat_solver_new();
+	Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan)); //index: pCnf->pVarNums[pObj->Id]
+	Cnf_DataWriteIntoSolverInt(pSAT, pCnf, 1, 0);
+	Cnf_DataLift(pCnf, pCnf->nVars);
+	
+	Cnf_DataWriteIntoSolverInt(pSAT, pCnf, 1, 0);
+	Cnf_DataLift(pCnf, -(pCnf->nVars));
+	
+	int ithPo;
+	Abc_Obj_t *pObj;
+	// Abc_NtkForEachObj(pNtk, pObj, ithPo){
+	//printf("%d: %s  ", Abc_ObjId(pObj), Abc_ObjName(pObj));
+	// }
+	//printf("PI: %d, FI: %d\n", Abc_NtkPiNum(pNtk), Abc_ObjFaninNum(pRoot));
+	
+	/* int ithcnftoabc[Abc_ObjFaninNum(pRoot)], ithabctocnf[Abc_NtkPiNum(pNtk)];
+	Abc_NtkForEachPi(pCone_k, pI, ithPI){
+		ithabctocnf[ithPI] = -1;
+		ithabctocnf[ithPI] = pCnf->pVarNums[ithPI];
+		ithcnftoabc[pCnf->pVarNums[ithPI]] = ithPI;
+		//printf("%s: cnf-%d/abc-%d  ", Abc_ObjName(pI), ithabctocnf[ithPI], ithPI);
+	} */
+	//cnf_i = ithabctocnf[id_i];
+	//cnf_j = ithabctocnf[id_j];
+	//printf("i:%d j:%d\n", cnf_i, cnf_j);
+	if(1){
+		Abc_Print(1, "symmetric\n");
+	}
+	return;
+}
 int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv) {
-	int ex, id_k, id_i, id_j;
+	int id_k, id_i, id_j;
+	char Command[1000];
 	
 	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
 	char * pInput = argv[1];
@@ -212,7 +259,9 @@ int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv) {
 		Abc_Print(-1, "Same input pin.\n");
 		return 1;
 	}
-	
+	SymmetrySAT(pNtk, id_k, id_i, id_j);
+	// sprintf(Command, "show");
+	// Cmd_CommandExecute(pAbc, Command);
 	return 0;
 usage:
 	Abc_Print(-2, "usage: lsv_sym_sat <output_index> <input_index> <input_index>\n");
