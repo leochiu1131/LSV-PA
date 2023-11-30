@@ -209,3 +209,5 @@ Temporary Items
 .history/
 
 lsv/pa1/test_cases/
+*.log
+*.src
