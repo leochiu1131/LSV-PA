@@ -1223,9 +1223,9 @@ Cudd_bddPickOneCube(
     if (string == NULL || node == NULL) return(0);
 
     /* The constant 0 function has no on-set cubes. */
-    one = DD_ONE(ddm);
-    bzero = Cudd_Not(one);
-    if (node == bzero) return(0);
+    one = DD_ONE(ddm); //return a constant 1 node
+    bzero = Cudd_Not(one); //return a constant 0 node
+    if (node == bzero) return(0); //if the node is a constant zero node
 
     for (i = 0; i < ddm->size; i++) string[i] = 2;
 
