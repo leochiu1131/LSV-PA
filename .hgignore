@@ -8,6 +8,8 @@ ReleaseLib/
 ReleaseExe/
 ReleaseExt/
 
+lsv/pa2/demo.blif
+
 _TEST/
 lib/abc*
 lib/m114*
@@ -30,6 +32,7 @@ src/aig/ddb/
 *.plg
 
 *.zip
+*.tgz
 
 abcspaceext.dsw
 abcext.dsp
