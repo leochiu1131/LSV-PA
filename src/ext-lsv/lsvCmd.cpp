@@ -5,16 +5,26 @@
 #include <fstream>
 #include <unordered_map>
 #include <vector>
+#include "sat/cnf/cnf.h"
 using namespace std;
+extern "C"{
+Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -257,5 +267,395 @@ int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv) {
   }
   delete[] output;
 
+  return 0;
+}
+
+bool MissingInput(int argc, int lim) {
+  if (argc < lim) {
+    cout << "missing input" << endl;
+    return 1;
+  }
+  return 0;
+}
+
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+  if (MissingInput(argc, 4)) return 1;
+
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int K = stoi(argv[1]);
+  int I = stoi(argv[2]);
+  int J = stoi(argv[3]);
+  Abc_Obj_t* pPoK = (Abc_Obj_t*) pNtk->vPos->pArray[K];
+  Abc_Obj_t* pRootK = Abc_ObjFanin0(pPoK);
+  DdManager * dd = (DdManager *) pNtk->pManFunc;
+  DdNode* ddPiI;
+  DdNode* ddPiI_;
+  DdNode* ddPiJ;
+  DdNode* ddPiJ_;
+  bool I_valid = false;
+  bool J_valid = false;
+
+  for (int i = 0; i < pRootK->vFanins.nSize; ++i) {
+    int n = pRootK->vFanins.pArray[i] - 1;
+    if (n == I) {
+      I_valid = true;
+      ddPiI = dd->vars[i];            Cudd_Ref(ddPiI);
+      ddPiI_ = Cudd_Not(ddPiI);       Cudd_Ref(ddPiI_);
+    }
+    if (n == J) {
+      J_valid = true;
+      ddPiJ = dd->vars[i];            Cudd_Ref(ddPiJ);
+      ddPiJ_ = Cudd_Not(ddPiJ);       Cudd_Ref(ddPiJ_);
+    }
+  }
+  DdNode* ddIJ_ = (DdNode*) pRootK->pData;  Cudd_Ref(ddIJ_);
+  DdNode* ddI_J = (DdNode*) pRootK->pData;  Cudd_Ref(ddI_J);
+  if (I_valid) {
+    DdNode* New_ddIJ_ = Cudd_Cofactor(dd, ddIJ_, ddPiI);
+    Cudd_Ref(New_ddIJ_);
+    Cudd_RecursiveDeref(dd, ddIJ_);
+    Cudd_RecursiveDeref(dd, ddPiI);
+    ddIJ_ = New_ddIJ_;
+    DdNode* New_ddI_J = Cudd_Cofactor(dd, ddI_J, ddPiI_);
+    Cudd_Ref(New_ddI_J);
+    Cudd_RecursiveDeref(dd, ddI_J);
+    Cudd_RecursiveDeref(dd, ddPiI_);
+    ddI_J = New_ddI_J;
+  }
+  if (J_valid) {
+    DdNode* New_ddIJ_ = Cudd_Cofactor(dd, ddIJ_, ddPiJ_);
+    Cudd_Ref(New_ddIJ_);
+    Cudd_RecursiveDeref(dd, ddIJ_);
+    Cudd_RecursiveDeref(dd, ddPiJ);
+    ddIJ_ = New_ddIJ_;
+    DdNode* New_ddI_J = Cudd_Cofactor(dd, ddI_J, ddPiJ);
+    Cudd_Ref(New_ddI_J);
+    Cudd_RecursiveDeref(dd, ddI_J);
+    Cudd_RecursiveDeref(dd, ddPiJ_);
+    ddI_J = New_ddI_J;
+  }
+
+  if (ddIJ_ == ddI_J) {
+    cout << "symmetric" << endl;
+  }
+  else {
+    cout << "asymmetric" << endl;
+    string ptnIJ_ = "";
+    string ptnI_J = "";
+    for (int i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
+      if (i == I) {
+        ptnIJ_ += '1';
+        ptnI_J += '0';
+      }
+      else if (i == J) {
+        ptnIJ_ += '0';
+        ptnI_J += '1';
+      }
+      else {
+        bool IsFin = false;
+        for (int j = 0; j < pRootK->vFanins.nSize; ++j) {
+          int n = pRootK->vFanins.pArray[j] - 1;
+          if (i == n) {
+            IsFin = true;
+            DdNode* ddnode = dd->vars[j];                           Cudd_Ref(ddnode);
+            DdNode* Pos_ddIJ_ = Cudd_Cofactor(dd, ddIJ_, ddnode);   Cudd_Ref(Pos_ddIJ_);
+            DdNode* Pos_ddI_J = Cudd_Cofactor(dd, ddI_J, ddnode);   Cudd_Ref(Pos_ddI_J);
+            if (Pos_ddIJ_ != Pos_ddI_J) {
+              ptnIJ_ += '1';
+              ptnI_J += '1';
+              Cudd_RecursiveDeref(dd, ddIJ_);
+              ddIJ_ = Pos_ddIJ_;
+              Cudd_RecursiveDeref(dd, ddI_J);
+              ddI_J = Pos_ddI_J;
+            }
+            else {
+              Cudd_RecursiveDeref(dd, Pos_ddIJ_);
+              Cudd_RecursiveDeref(dd, Pos_ddI_J);
+              DdNode* Neg_ddIJ_ = Cudd_Cofactor(dd, ddIJ_, Cudd_Not(ddnode));
+              Cudd_Ref(Neg_ddIJ_);
+              Cudd_RecursiveDeref(dd, ddIJ_);
+              ddIJ_ = Neg_ddIJ_;
+              DdNode* Neg_ddI_J = Cudd_Cofactor(dd, ddI_J, Cudd_Not(ddnode));
+              Cudd_Ref(Neg_ddI_J);
+              Cudd_RecursiveDeref(dd, ddI_J);
+              ddI_J = Neg_ddI_J;
+              ptnIJ_ += '0';
+              ptnI_J += '0';
+            }
+            Cudd_RecursiveDeref(dd, ddnode);
+            break;
+          }
+        }
+        if (!IsFin) {
+          ptnIJ_ += '1';
+          ptnI_J += '1';
+        }
+      }
+    }
+    cout << ptnIJ_ << endl;
+    cout << ptnI_J << endl;
+  }
+  Cudd_RecursiveDeref(dd, ddIJ_);
+  Cudd_RecursiveDeref(dd, ddI_J);
+  return 0;
+}
+
+int VarNums(Cnf_Dat_t* pCnf, Aig_Obj_t* pIN) {
+  return pCnf->pVarNums[pIN->Id];
+}
+
+void AddSymmetric(Aig_Man_t* pAig, sat_solver* pSat, Cnf_Dat_t* pCnfA, Cnf_Dat_t* pCnfB, int I, int J) {
+  Aig_Obj_t* pPiI;
+  Aig_Obj_t* pPiJ;
+  int Lits[2];
+  // vA(t) = vB(t)
+  for (int i = 0; i < pAig->vCis->nSize; ++i) {
+    Aig_Obj_t* pPi = (Aig_Obj_t*) pAig->vCis->pArray[i];
+    int vA_t = VarNums(pCnfA, pPi);
+    int vB_t = VarNums(pCnfB, pPi);
+    if (i == I) {
+      pPiI = pPi;
+    }
+    else if (i == J) {
+      pPiJ = pPi;
+    }
+    else {
+      // (vA(t) + vB(t)')
+      Lits[0] = 2 * vA_t;
+      Lits[1] = 2 * vB_t + 1;
+      sat_solver_addclause(pSat, Lits, Lits + 2);
+      // (vA(t)' + vB(t))
+      Lits[0] = 2 * vA_t + 1;
+      Lits[1] = 2 * vB_t;
+      sat_solver_addclause(pSat, Lits, Lits + 2);
+    }
+  }
+  int vA_i = VarNums(pCnfA, pPiI);
+  int vA_j = VarNums(pCnfA, pPiJ);
+  int vB_i = VarNums(pCnfB, pPiI);
+  int vB_j = VarNums(pCnfB, pPiJ);
+  // vA(i) = vB(j)
+    // (vA(i) + vB(j)')
+    Lits[0] = 2 * vA_i;
+    Lits[1] = 2 * vB_j + 1;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+    // (vA(i)' + vB(j))
+    Lits[0] = 2 * vA_i + 1;
+    Lits[1] = 2 * vB_j;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+  // vA(j) = vB(i)
+    // (vA(j) + vB(i)')
+    Lits[0] = 2 * vA_j;
+    Lits[1] = 2 * vB_i + 1;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+    // (vA(j)' + vB(i))
+    Lits[0] = 2 * vA_j + 1;
+    Lits[1] = 2 * vB_i;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+}
+
+int RunSAT(sat_solver* pSat, Cnf_Dat_t* pCnfA, Cnf_Dat_t* pCnfB, Aig_Obj_t* pPoK) {
+  int Lits[2];
+  int vA_yk = VarNums(pCnfA, pPoK);
+  int vB_yk = VarNums(pCnfB, pPoK);
+  Lits[0] = 2 * vA_yk;
+  Lits[1] = 2 * vB_yk + 1;
+  int status = sat_solver_solve(pSat, Lits, Lits + 2, 0, 0, 0, 0);
+  return status;
+}
+
+void PrintResult(Aig_Man_t* pAig, sat_solver* pSat, Cnf_Dat_t* pCnfA, Cnf_Dat_t* pCnfB, int I, int status) {
+  if (status == l_False) {
+    cout << "symmetric" << endl;
+  }
+  else {
+    cout << "asymmetric" << endl;
+    string ptnA = "";
+    string ptnB = "";
+    for (int i = 0; i < pAig->vCis->nSize; ++i) {
+      Aig_Obj_t* pPi = (Aig_Obj_t*) pAig->vCis->pArray[i];
+      int vA = VarNums(pCnfA, pPi);
+      int vB = VarNums(pCnfB, pPi);
+      if (sat_solver_var_value(pSat, vA)) ptnA += '1';
+      else                                ptnA += '0';
+      if (sat_solver_var_value(pSat, vB)) ptnB += '1';
+      else                                ptnB += '0';
+    }
+    if (ptnA[I] == '1') {
+      cout << ptnA << endl;
+      cout << ptnB << endl;
+    }
+    else {
+      cout << ptnB << endl;
+      cout << ptnA << endl;
+    }
+  }
+}
+
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+  if (MissingInput(argc, 4)) return 1;
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int K = stoi(argv[1]);
+  int I = stoi(argv[2]);
+  int J = stoi(argv[3]);
+  Abc_Obj_t* pPoK_obj = (Abc_Obj_t*) pNtk->vPos->pArray[K];
+  Abc_Obj_t* pRootK = Abc_ObjFanin0(pPoK_obj);
+
+  // step 1: extract the cone of yk
+  Abc_Ntk_t* pNtkConeK = Abc_NtkCreateCone(pNtk, pRootK, Abc_ObjName(pRootK), 1);
+  // step 2: derive a corresponding AIG citcuit
+  Aig_Man_t* pAig = Abc_NtkToDar(pNtkConeK, 0, 1);
+  Aig_Obj_t* pPoK = (Aig_Obj_t*) pAig->vCos->pArray[0];
+  // step 3: initialize a SAT solver
+  sat_solver* pSat = sat_solver_new();
+  // step 4: obtain the CNF from AIG
+  Cnf_Dat_t* pCnfA = Cnf_Derive(pAig, Aig_ManCoNum(pAig));
+  // step 5: add the CNF to the SAT solver 
+  pSat = (sat_solver *) Cnf_DataWriteIntoSolverInt( pSat, pCnfA, 1, 1 );
+  // step 6: create a copy and add to the SAT solver
+  Cnf_Dat_t* pCnfB = Cnf_Derive(pAig, Aig_ManCoNum(pAig));
+  Cnf_DataLift( pCnfB, pCnfA->nVars );
+  pSat = (sat_solver *) Cnf_DataWriteIntoSolverInt( pSat, pCnfB, 1, 1 );
+  // step 7: add symmetric infromation
+  AddSymmetric(pAig, pSat, pCnfA, pCnfB, I, J);
+  // step 8: solve the sat problem
+  int status = RunSAT(pSat, pCnfA, pCnfB, pPoK);
+  // step 9: print result
+  PrintResult(pAig, pSat, pCnfA, pCnfB, I, status);
+  return 0;
+}
+
+void AddSymmetricEnb(Aig_Man_t* pAig, sat_solver* pSat, Cnf_Dat_t* pCnfA, Cnf_Dat_t* pCnfB, int* enable) {
+  Aig_Obj_t* pPoK = (Aig_Obj_t*) pAig->vCos->pArray[0];
+  int Lits[4];
+  int FinSize = pAig->vCis->nSize;
+  // (a) (vA_yk xor vB_yk)
+    int vA_yk = VarNums(pCnfA, pPoK);
+    int vB_yk = VarNums(pCnfB, pPoK);
+    // (vAyk + vByk)
+    Lits[0] = 2 * vA_yk;
+    Lits[1] = 2 * vB_yk;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+    // (¬vAyk + ¬vByk)
+    Lits[0] = 2 * vA_yk + 1;
+    Lits[1] = 2 * vB_yk + 1;
+    sat_solver_addclause(pSat, Lits, Lits + 2);
+  // (b) (vA_t == vB_t) + enable_t
+  for (int i = 0; i < FinSize; ++i) {
+    enable[i] = sat_solver_addvar(pSat);
+    Lits[2] = 2 * enable[i];
+    Aig_Obj_t* pPi = (Aig_Obj_t*) pAig->vCis->pArray[i];
+    int vA_t = VarNums(pCnfA, pPi);
+    int vB_t = VarNums(pCnfB, pPi);
+    // (vA_t + ¬vB_t + enable_t)
+    Lits[0] = 2 * vA_t;
+    Lits[1] = 2 * vB_t + 1;
+    sat_solver_addclause(pSat, Lits, Lits + 3);
+    // (¬vA_t + vB_t + enable_t)
+    Lits[0] = 2 * vA_t + 1;
+    Lits[1] = 2 * vB_t;
+    sat_solver_addclause(pSat, Lits, Lits + 3);
+  }
+  // (c) (d)
+  for (int i = 0; i < FinSize-1; ++i) {
+    Lits[2] = 2 * enable[i] + 1;
+    Aig_Obj_t* pPiI = (Aig_Obj_t*) pAig->vCis->pArray[i];
+    int vA_i = VarNums(pCnfA, pPiI);
+    int vB_i = VarNums(pCnfB, pPiI);
+    for (int j = i + 1; j < FinSize; ++j) {
+      Lits[3] = 2 * enable[j] + 1;
+      Aig_Obj_t* pPiJ = (Aig_Obj_t*) pAig->vCis->pArray[j];
+      int vA_j = VarNums(pCnfA, pPiJ);
+      int vB_j = VarNums(pCnfB, pPiJ);
+    // (c) (vA_i == vB_j) + ¬enable_i + ¬enable_j
+      // (vA_i + ¬vB_j + ¬enable_i + ¬enable_j)
+      Lits[0] = 2 * vA_i;
+      Lits[1] = 2 * vB_j + 1;
+      sat_solver_addclause(pSat, Lits, Lits + 4);
+      // (¬vA_i + vB_j + ¬enable_i + ¬enable_j)
+      Lits[0] = 2 * vA_i + 1;
+      Lits[1] = 2 * vB_j;
+      sat_solver_addclause(pSat, Lits, Lits + 4);     
+    // (d) (vA_j == vB_i) + ¬enable_i + ¬enable_j
+       // (vA_j + ¬vB_i + ¬enable_i + ¬enable_j)
+      Lits[0] = 2 * vA_j;
+      Lits[1] = 2 * vB_i + 1;
+      sat_solver_addclause(pSat, Lits, Lits + 4);
+      // (¬vA_j + vB_i + ¬enable_i + ¬enable_j)
+      Lits[0] = 2 * vA_j + 1;
+      Lits[1] = 2 * vB_i;
+      sat_solver_addclause(pSat, Lits, Lits + 4);     
+    }
+  }
+}
+
+void RunSATIncre(sat_solver* pSat, int* enable, int FinSize) {
+  int* Lits = new int[FinSize];
+  for (int i = 0; i < FinSize; ++i) {
+    Lits[i] = 2 * enable[i] + 1;
+  }
+
+  int status = sat_solver_solve(pSat, Lits, Lits + FinSize, 0, 0, 0, 0);
+  if (status == l_True) {
+    cout << "something wrong!" << endl;
+  }
+  else {
+    vector<vector<int>> sym_pair;
+    for (int i = 0; i < FinSize-1; ++i) {
+      Lits[i] = 2 * enable[i];
+      for (int j = i + 1; j < FinSize; ++j) {
+        Lits[j] = 2 * enable[j];
+        status = sat_solver_solve(pSat, Lits, Lits + FinSize, 0, 0, 0, 0);
+        if (status == l_False) {
+          vector<int> pair;
+          pair.push_back(i);
+          pair.push_back(j);
+          sym_pair.push_back(pair);
+        }
+        Lits[j] = 2 * enable[j] + 1;
+      }
+      Lits[i] = 2 * enable[i] + 1;
+    }
+    if (sym_pair.size()) {
+      cout << "symmetric" << endl;
+      for (int i = 0; i < sym_pair.size(); ++i) {
+        cout << sym_pair[i][0] << ' ' << sym_pair[i][1] << endl;
+      }
+    }
+    else {
+      cout << "asymmetric" << endl;
+    }
+  }
+  delete[] Lits;
+}
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+  if (MissingInput(argc, 2)) return 1;
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int K = stoi(argv[1]);
+  Abc_Obj_t* pPoK_obj = (Abc_Obj_t*) pNtk->vPos->pArray[K];
+  Abc_Obj_t* pRootK = Abc_ObjFanin0(pPoK_obj);
+
+  // step 1: extract the cone of yk
+  Abc_Ntk_t* pNtkConeK = Abc_NtkCreateCone(pNtk, pRootK, Abc_ObjName(pRootK), 1);
+  // step 2: derive a corresponding AIG citcuit
+  Aig_Man_t* pAig = Abc_NtkToDar(pNtkConeK, 0, 1);
+  // step 3: initialize a SAT solver
+  sat_solver* pSat = sat_solver_new();
+  // step 4: obtain the CNF from AIG
+  Cnf_Dat_t* pCnfA = Cnf_Derive(pAig, Aig_ManCoNum(pAig));
+  // step 5: add the CNF to the SAT solver 
+  pSat = (sat_solver *) Cnf_DataWriteIntoSolverInt( pSat, pCnfA, 1, 1 );
+  // step 6: create a copy and add to the SAT solver
+  Cnf_Dat_t* pCnfB = Cnf_Derive(pAig, Aig_ManCoNum(pAig));
+  Cnf_DataLift( pCnfB, pCnfA->nVars );
+  pSat = (sat_solver *) Cnf_DataWriteIntoSolverInt( pSat, pCnfB, 1, 1 );
+  // step 7: add constraint
+  int* enable = new int[pAig->vCis->nSize];
+  AddSymmetricEnb(pAig, pSat, pCnfA, pCnfB, enable);
+  // step 8: run SAT
+  RunSATIncre(pSat, enable, pAig->vCis->nSize);
+
+  delete[] enable;
   return 0;
 }
