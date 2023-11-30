@@ -417,7 +417,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 
   if((i_bdd==-1) && (j_bdd==-1)){ 
     // Both i, j are not support of k
-    printf("symmetry\n");
+    printf("symmetric\n");
     return 0;
   }else if((i_bdd==-1)){
     // Only j is support of k
@@ -439,10 +439,10 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
   }
 
   if(XOR == DD_ZERO(dd) || XOR == Cudd_Not(DD_ONE(dd))){
-    printf("symmetry\n");
+    printf("symmetric\n");
     return 0;
   }else{
-    // Asymmetry, find counter example
+    // Asymmetric, find counter example
     // Reference: cudd_firstCube 
     // http://eddiehung.github.io/dox-abc/de/dc1/cudd_8h.html#a139d8dd64955ecf3e2fd4c5d6ceeebb4
     int counter_example[Abc_NtkPiNum(pNtk)];
@@ -466,7 +466,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
         }
       }
     
-    printf("asymmetry\n");
+    printf("asymmetric\n");
     //Pattern 0 
     for(int _i = 0; _i < Abc_NtkPiNum(pNtk); _i++){
       if(_i == i) printf("0");
@@ -489,7 +489,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 usage:
   Abc_Print(-2, "usage: lsv_sym_bdd <k> <i> <j> [-h]\n");
-  Abc_Print(-2, "       Check if the circuit is symmetry on variables.\n");
+  Abc_Print(-2, "       Check if the circuit is symmetric on variables.\n");
   Abc_Print(-2, "       <k> : the output pin index [-h]\n");
   Abc_Print(-2, "       <i> <j> : the intput pin indexes [-h]\n");
   return 1;
@@ -635,9 +635,9 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
 
   // (9)
   
-  if(Is_asym != l_True) printf("symmetry\n");
+  if(Is_asym != l_True) printf("symmetric\n");
   else {
-    printf("asymmetry\n");
+    printf("asymmetric\n");
     Aig_ManForEachCi(aig_Man, pObj, i) {
       // Print pattern 0
       printf("%i", sat_solver_var_value(solver, Cnf->pVarNums[pObj->Id]));
