@@ -2,13 +2,21 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 #include "bdd/extrab/extraBdd.h"
-
+#include <cstring>
+#include "sat/cnf/cnf.h"
+extern "C"{
+  Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimbdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymbdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymsat(Abc_Frame_t* pAbc, int argc, char** argv);
 unsigned long long int simnode(Abc_Obj_t* anode, unsigned long long int* input, unsigned long long int const1,
 unsigned long long int* nodevalue, bool* nodedone);
+int Lsv_Symbdd(Abc_Ntk_t* pNtk, char** argv);
+int Lsv_Symsat(Abc_Ntk_t* pNtk, char** argv);
 int Lsv_Simbdd(Abc_Ntk_t* pNtk, char* input);
 int Lsv_Simaig(Abc_Ntk_t* pNtk, unsigned long long int* input, int linenum, unsigned long long int const1);
 void writedd(DdNode* dd, char* filename, DdManager* manager){
@@ -37,6 +45,8 @@ void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimbdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimaig, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymbdd, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymsat, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -80,7 +90,33 @@ int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Print(-1, "Empty network.\n");
     return 1;
   }
-  Lsv_NtkPrintNodes(pNtk);
+  Lsv_Symbdd(pNtk, argv);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+  Abc_Print(-2, "\t        check symmetry by bdd\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+int Lsv_CommandSymbdd(Abc_Frame_t* pAbc, int argc, char** argv){
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_Symbdd(pNtk, argv);
   return 0;
 
 usage:
@@ -123,7 +159,6 @@ int Lsv_Simbdd(Abc_Ntk_t* pNtk, char* input){
       for(int i=0;i < n;i++){
         if(strcmp(vNamesIn[i],Abc_ObjName(pPi)) == 0){
           ithvar = i;
-          // printf("%d\n", ithvar);
         }
       }
       if(ithvar == -1){
@@ -161,6 +196,250 @@ int Lsv_Simbdd(Abc_Ntk_t* pNtk, char* input){
   return 0;
 }
 
+int Lsv_Symbdd(Abc_Ntk_t* pNtk, char** argv){
+  int k = atoi(argv[1]);
+  // printf("%d\n", k);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(Abc_NtkPo(pNtk, k)); 
+  assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+  DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;  
+  DdNode* ddnode = (DdNode *)pRoot->pData;
+  Cudd_Ref(ddnode);
+  int xi, xj;
+  xi = atoi(argv[2]);
+  xj = atoi(argv[3]);
+  if(xi == xj){
+    printf("symmetric\n");
+    return 0;
+  }
+  Abc_Obj_t* Pi1 = Abc_NtkPi(pNtk, xi);
+  Abc_Obj_t* Pi2 = Abc_NtkPi(pNtk, xj);
+  char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+  int n = Abc_NodeGetFaninNames(pRoot)->nSize;
+  // printf("%d\n", n);
+  int index1=-1, index2=-1;
+  for(int i=0;i<n;i++){
+    if(strcmp(vNamesIn[i],Abc_ObjName(Pi1)) == 0){
+          index1 = i;
+    }
+    else if(strcmp(vNamesIn[i],Abc_ObjName(Pi2)) == 0){
+          index2 = i;
+    }
+  }
+  if(index1 == -1 && index2 == -1){
+    printf("symmetric\n");
+  }
+  else if(index2 == -1){
+    DdNode* var1 = Cudd_bddIthVar(dd, index1);
+    Cudd_Ref(var1);
+    DdNode* temp1 = Cudd_Cofactor(dd, ddnode, var1);
+    Cudd_Ref(temp1);
+    DdNode* temp2 = Cudd_Cofactor(dd, ddnode, Cudd_Not(var1));
+    Cudd_Ref(temp2);
+    if(temp1 == temp2) printf("symmetric\n");
+    else{
+      printf("asymmetric\n");
+      int pinum = Abc_NtkPiNum(pNtk);
+      int* pattern1 = new int[pinum];
+      int* pattern2 = new int[pinum];
+      int ithPi;
+      Abc_Obj_t* pPi;
+      Abc_NtkForEachPi(pNtk, pPi, ithPi){
+        int ithvar = -1;
+        for(int i=0;i < n;i++){
+          if(strcmp(vNamesIn[i],Abc_ObjName(pPi)) == 0){
+            ithvar = i;
+          }
+        }
+        if(ithvar == -1){
+          pattern1[ithPi] = 0;
+          pattern2[ithPi] = 0;
+          continue;
+        }
+        else if(ithvar == index1){
+          pattern1[ithPi] = 1;
+          pattern2[ithPi] = 0;
+        }
+        else{
+          DdNode* poscof1 = Cudd_Cofactor(dd, temp1, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof1);
+          DdNode* poscof2 = Cudd_Cofactor(dd, temp2, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof2);
+          if(poscof1 != poscof2){
+            pattern1[ithPi] = 1;
+            pattern2[ithPi] = 1;
+            temp1 = poscof1;
+            temp2 = poscof2;
+          }
+          else{
+            pattern1[ithPi] = 0;
+            pattern2[ithPi] = 0;
+            temp1 = Cudd_Cofactor(dd, temp1, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+            temp2 = Cudd_Cofactor(dd, temp2, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+          }
+          Cudd_RecursiveDeref(dd, poscof1);
+          Cudd_RecursiveDeref(dd, poscof2);
+        }
+      }
+      pattern1[xj] = 0;
+      pattern2[xj] = 1;
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern1[i]);
+      }
+      printf("\n");
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern2[i]);
+      }
+      printf("\n");
+      Cudd_RecursiveDeref(dd, var1);
+      Cudd_RecursiveDeref(dd, temp1);
+      Cudd_RecursiveDeref(dd, temp2);
+    }
+  }
+  else if(index1 == -1){
+    DdNode* var2 = Cudd_bddIthVar(dd, index2);
+    Cudd_Ref(var2);
+    DdNode* temp1 = Cudd_Cofactor(dd, ddnode, var2);
+    Cudd_Ref(temp1);
+    DdNode* temp2 = Cudd_Cofactor(dd, ddnode, Cudd_Not(var2));
+    Cudd_Ref(temp2);
+    if(temp1 == temp2) printf("symmetric\n");
+    else{
+      printf("asymmetric\n");
+      int pinum = Abc_NtkPiNum(pNtk);
+      int* pattern1 = new int[pinum];
+      int* pattern2 = new int[pinum];
+      int ithPi;
+      Abc_Obj_t* pPi;
+      Abc_NtkForEachPi(pNtk, pPi, ithPi){
+        int ithvar = -1;
+        for(int i=0;i < n;i++){
+          if(strcmp(vNamesIn[i],Abc_ObjName(pPi)) == 0){
+            ithvar = i;
+          }
+        }
+        if(ithvar == -1){
+          pattern1[ithPi] = 0;
+          pattern2[ithPi] = 0;
+          continue;
+        }
+        else if(ithvar == index2){
+          pattern1[ithPi] = 1;
+          pattern2[ithPi] = 0;
+        }
+        else{
+          DdNode* poscof1 = Cudd_Cofactor(dd, temp1, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof1);
+          DdNode* poscof2 = Cudd_Cofactor(dd, temp2, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof2);
+          if(poscof1 != poscof2){
+            pattern1[ithPi] = 1;
+            pattern2[ithPi] = 1;
+            temp1 = poscof1;
+            temp2 = poscof2;
+          }
+          else{
+            pattern1[ithPi] = 0;
+            pattern2[ithPi] = 0;
+            temp1 = Cudd_Cofactor(dd, temp1, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+            temp2 = Cudd_Cofactor(dd, temp2, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+          }
+          Cudd_RecursiveDeref(dd, poscof1);
+          Cudd_RecursiveDeref(dd, poscof2);
+        }
+      }
+      pattern1[xi] = 0;
+      pattern2[xi] = 1;
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern1[i]);
+      }
+      printf("\n");
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern2[i]);
+      }
+      printf("\n");
+      Cudd_RecursiveDeref(dd, var2);
+      Cudd_RecursiveDeref(dd, temp1);
+      Cudd_RecursiveDeref(dd, temp2);
+    }
+  }
+  else{
+    DdNode* var1 = Cudd_bddIthVar(dd, index1);
+    Cudd_Ref(var1);
+    DdNode* var2 = Cudd_bddIthVar(dd, index2);
+    Cudd_Ref(var2);
+    DdNode* temp1 = Cudd_Cofactor(dd, ddnode, var1);
+    Cudd_Ref(temp1);
+    DdNode* temp2 = Cudd_Cofactor(dd, ddnode, var2);
+    Cudd_Ref(temp2);
+    temp1 = Cudd_Cofactor(dd, temp1, Cudd_Not(var2));
+    Cudd_Ref(temp1);
+    temp2 = Cudd_Cofactor(dd, temp2, Cudd_Not(var1));
+    Cudd_Ref(temp2);
+    if(temp1 == temp2) printf("symmetric\n");
+    else{
+      printf("asymmetric\n");
+      int pinum = Abc_NtkPiNum(pNtk);
+      int* pattern1 = new int[pinum];
+      int* pattern2 = new int[pinum];
+      int ithPi;
+      Abc_Obj_t* pPi;
+      Abc_NtkForEachPi(pNtk, pPi, ithPi){
+        int ithvar = -1;
+        for(int i=0;i < n;i++){
+          if(strcmp(vNamesIn[i],Abc_ObjName(pPi)) == 0){
+            ithvar = i;
+          }
+        }
+        if(ithvar == -1){
+          pattern1[ithPi] = 0;
+          pattern2[ithPi] = 0;
+          continue;
+        }
+        else if(ithvar == index1){
+          pattern1[ithPi] = 1;
+          pattern2[ithPi] = 0;
+        }
+        else if(ithvar == index2){
+          pattern1[ithPi] = 0;
+          pattern2[ithPi] = 1;
+        }
+        else{
+          DdNode* poscof1 = Cudd_Cofactor(dd, temp1, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof1);
+          DdNode* poscof2 = Cudd_Cofactor(dd, temp2, Cudd_bddIthVar(dd, ithvar));
+          Cudd_Ref(poscof2);
+          if(poscof1 != poscof2){
+            pattern1[ithPi] = 1;
+            pattern2[ithPi] = 1;
+            temp1 = poscof1;
+            temp2 = poscof2;
+          }
+          else{
+            pattern1[ithPi] = 0;
+            pattern2[ithPi] = 0;
+            temp1 = Cudd_Cofactor(dd, temp1, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+            temp2 = Cudd_Cofactor(dd, temp2, Cudd_Not(Cudd_bddIthVar(dd, ithvar)));
+          }
+          Cudd_RecursiveDeref(dd, poscof1);
+          Cudd_RecursiveDeref(dd, poscof2);
+        }
+      }
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern1[i]);
+      }
+      printf("\n");
+      for(int i=0;i<pinum;i++){
+        printf("%d", pattern2[i]);
+      }
+      printf("\n");
+      Cudd_RecursiveDeref(dd, var1);
+      Cudd_RecursiveDeref(dd, var2);
+      Cudd_RecursiveDeref(dd, temp1);
+      Cudd_RecursiveDeref(dd, temp2);
+    }
+  }
+  return 0;
+}
 
 static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv){
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
@@ -207,8 +486,6 @@ static int Lsv_CommandSimaig(Abc_Frame_t* pAbc, int argc, char** argv){
 int Lsv_Simaig(Abc_Ntk_t* pNtk, unsigned long long int* input, int linenum, unsigned long long int const1){
   Abc_Obj_t* pPo;
   int ithPo;
-  Abc_Obj_t* pnode;
-  int ithnode;
   unsigned long long int* nodevalue;
   nodevalue = new unsigned long long int[Abc_NtkObjNum(pNtk)];
   bool* nodedone;
@@ -261,4 +538,105 @@ unsigned long long int* nodevalue, bool* nodedone){
     return nodevaluex;
   }
   return const1;
+}
+
+int Lsv_CommandSymsat(Abc_Frame_t* pAbc, int argc, char** argv){
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_Symsat(pNtk, argv);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
+  Abc_Print(-2, "\t        prints the nodes in the network\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+int Lsv_Symsat(Abc_Ntk_t* pNtk, char** argv){
+  int k = atoi(argv[1]);
+  int i = atoi(argv[2]);
+  int j = atoi(argv[3]);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(Abc_NtkPo(pNtk, k));
+  Abc_Ntk_t* newRoot = Abc_NtkCreateCone(pNtk, pRoot, Abc_ObjName(Abc_NtkPo(pNtk, k)), 1);
+  Aig_Man_t* aig_circuit = Abc_NtkToDar(newRoot, 0, 1);
+  sat_solver* solver = sat_solver_new();
+  Cnf_Dat_t* cnf_1 = Cnf_Derive(aig_circuit, 1);
+  Cnf_Dat_t* cnf_2 = Cnf_Derive(aig_circuit, 1);
+  Cnf_DataWriteIntoSolverInt(solver, cnf_1, 1, 0);
+  Cnf_DataLift(cnf_2, Abc_ObjFanin0(Abc_NtkPo(newRoot, 0))->Id);
+  Cnf_DataWriteIntoSolverInt(solver, cnf_2, 1, 0);
+
+  Abc_Obj_t* pObj;
+  int ithPi;
+  lit* var2lit_1 = new lit[Abc_NtkPiNum(pNtk)];
+  lit* var2lit_2 = new lit[Abc_NtkPiNum(pNtk)];
+  Abc_NtkForEachPi(pNtk, pObj, ithPi){
+    var2lit_1[ithPi] = cnf_1->pVarNums[pObj->Id];
+    var2lit_2[ithPi] = cnf_2->pVarNums[pObj->Id];
+  }
+  lit cls[2];
+  cls[0] = toLitCond(var2lit_1[i], 0);
+  cls[1] = toLitCond(var2lit_2[j], 1);
+  sat_solver_addclause(solver, cls, cls+2);
+  cls[0] = toLitCond(var2lit_1[i], 1);
+  cls[1] = toLitCond(var2lit_2[j], 0);
+  sat_solver_addclause(solver, cls, cls+2);
+  cls[0] = toLitCond(var2lit_1[j], 0);
+  cls[1] = toLitCond(var2lit_2[i], 1);
+  sat_solver_addclause(solver, cls, cls+2);
+  cls[0] = toLitCond(var2lit_1[j], 1);
+  cls[1] = toLitCond(var2lit_2[i], 0);
+  sat_solver_addclause(solver, cls, cls+2);
+  Abc_NtkForEachPi(pNtk, pObj, ithPi){
+    if(ithPi != i && ithPi != j){
+      cls[0] = toLitCond(var2lit_1[ithPi], 0);
+      cls[1] = toLitCond(var2lit_2[ithPi], 1);
+      sat_solver_addclause(solver, cls, cls+2);
+      cls[0] = toLitCond(var2lit_1[ithPi], 1);
+      cls[1] = toLitCond(var2lit_2[ithPi], 0);
+      sat_solver_addclause(solver, cls, cls+2);
+    }
+  }
+  cls[0] = toLitCond(cnf_1->pVarNums[Abc_ObjFanin0(Abc_NtkPo(newRoot, 0))->Id], 0);
+  cls[1] = toLitCond(cnf_2->pVarNums[Abc_ObjFanin0(Abc_NtkPo(newRoot, 0))->Id], 0);
+  sat_solver_addclause(solver, cls, cls+2);
+  cls[0] = toLitCond(cnf_1->pVarNums[Abc_ObjFanin0(Abc_NtkPo(newRoot, 0))->Id], 1);
+  cls[1] = toLitCond(cnf_2->pVarNums[Abc_ObjFanin0(Abc_NtkPo(newRoot, 0))->Id], 1);
+  sat_solver_addclause(solver, cls, cls+2);
+
+  int sat_result = sat_solver_solve(solver, cls, cls, 0, 0, 0, 0);
+  if(sat_result == -1) printf("symmetric\n");
+  else{
+    printf("asymmetric\n");
+    int n = Abc_NtkPiNum(pNtk);
+    int* pattern1 = new int[n];
+    int* pattern2 = new int[n];
+    for(int it=0;it<n;it++){
+      pattern1[it] = sat_solver_var_value(solver, var2lit_1[it]);
+      pattern2[it] = sat_solver_var_value(solver, var2lit_2[it]);
+    }
+    for(int it=0;it<n;it++){
+      printf("%d", pattern1[it]);
+    }
+    printf("\n");
+    for(int it=0;it<n;it++){
+      printf("%d", pattern2[it]);
+    }
+    printf("\n");
+  }
+  return 0;
 }
