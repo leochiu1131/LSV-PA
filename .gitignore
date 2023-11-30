@@ -226,3 +226,8 @@ compare.py
 ref_9bit.out
 my_9bit.out
 test*
+demo.blif
+ex2.blif
+pa.cpp
+lsvCmd.cpp
+src/ext-lsv/output.txt
