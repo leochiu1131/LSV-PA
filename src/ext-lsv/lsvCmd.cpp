@@ -442,6 +442,8 @@ void Lsv_NtkSymBdd(Abc_Ntk_t *pNtk, int k, int i, int j) {
     Abc_Obj_t *pFanin;
     DdNode* cof_pos = (DdNode*)pRoot->pData, *cof_pos_new;
     DdNode* cof_neg = (DdNode*)pRoot->pData, *cof_neg_new;
+    Cudd_Ref(cof_pos);
+    Cudd_Ref(cof_neg);
 
     Vec_Ptr_t * vNamesIn;
     vNamesIn = Abc_NodeGetFaninNames(pRoot);
@@ -449,17 +451,29 @@ void Lsv_NtkSymBdd(Abc_Ntk_t *pNtk, int k, int i, int j) {
     int j_index = Vec_PtrFindStr(vNamesIn, Abc_ObjName(Abc_NtkPi(pNtk, j)));
     if (i_index != -1) {
         DdNode *dd_i = Cudd_bddIthVar(dd, i_index);
-        cof_pos = Cudd_Cofactor(dd, cof_pos, dd_i);
-        Cudd_Ref(cof_pos);
-        cof_neg = Cudd_Cofactor(dd, cof_neg, Cudd_Not(dd_i));
-        Cudd_Ref(cof_neg);
+        Cudd_Ref(dd_i);
+        cof_pos_new = Cudd_Cofactor(dd, cof_pos, dd_i);
+        Cudd_Ref(cof_pos_new);
+        Cudd_RecursiveDeref(dd, cof_pos);
+        cof_pos = cof_pos_new;
+        
+        cof_neg_new = Cudd_Cofactor(dd, cof_neg, Cudd_Not(dd_i));
+        Cudd_Ref(cof_neg_new);
+        Cudd_RecursiveDeref(dd, cof_neg);
+        cof_neg = cof_neg_new;
     }
     if (j_index != -1) {
         DdNode *dd_j = Cudd_bddIthVar(dd, j_index);
-        cof_pos = Cudd_Cofactor(dd, cof_pos, Cudd_Not(dd_j));
-        Cudd_Ref(cof_pos);
-        cof_neg = Cudd_Cofactor(dd, cof_neg, dd_j);
-        Cudd_Ref(cof_neg);
+        Cudd_Ref(dd_j);
+        cof_pos_new = Cudd_Cofactor(dd, cof_pos, Cudd_Not(dd_j));
+        Cudd_Ref(cof_pos_new);
+        Cudd_RecursiveDeref(dd, cof_pos);
+        cof_pos = cof_pos_new;
+
+        cof_neg_new = Cudd_Cofactor(dd, cof_neg, dd_j);
+        Cudd_Ref(cof_neg_new);
+        Cudd_RecursiveDeref(dd, cof_neg);
+        cof_neg = cof_neg_new;
     }
 
     DdNode *counter_example = Cudd_bddXor(dd, cof_pos, cof_neg);
