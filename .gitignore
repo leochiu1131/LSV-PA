@@ -208,6 +208,8 @@ Temporary Items
 # Local History for Visual Studio Code
 .history/
 
+*test*
+*.blif
 *.ps
 *.pdf
 *.history
