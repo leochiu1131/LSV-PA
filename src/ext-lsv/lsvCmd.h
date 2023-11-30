@@ -33,9 +33,11 @@
 #include <climits>
 #include <iostream>
 #include "base/abc/abc.h"
+// #include <opt/dar/dar.h>
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 #include "bdd/extrab/extraBdd.h"
+#include "sat/cnf/cnf.h"
 
 ////////////////////////////////////////////////////////////////////////
 ///                         PARAMETERS                               ///
@@ -64,7 +66,7 @@ extern int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 extern int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
 /*=== lsvPa2.cpp ==========================================================*/
 extern int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
-extern int Lsv_CommandSymAig(Abc_Frame_t* pAbc, int argc, char** argv);
+extern int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
 /*=== lsvUtils.cpp ==========================================================*/
 extern void printBits(unsigned int num, int size=32);
 

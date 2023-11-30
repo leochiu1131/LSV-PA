@@ -3,6 +3,10 @@
 // ABC_NAMESPACE_IMPL_START helps abc to fetch namespace from all files
 ABC_NAMESPACE_IMPL_START
 
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
+
 DdNode* Cudd_Cofactor_with_Ref ( DdManager* dd, DdNode* bdd, int index1, int index2, bool rev) {
     DdNode * bddVar1 = Cudd_bddIthVar(dd, index1);
     DdNode * bddVar2 = Cudd_bddIthVar(dd, index2);
@@ -236,147 +240,163 @@ usage:
     return 1;
 }
 
-void Lsv_AigSymmetry ( Abc_Ntk_t * pNtk, std::vector<std::vector<unsigned int>>& vSimPatGrp, int lineCount ) {
-  int i=0;
-  Abc_Obj_t * pObj;
-  std::vector<unsigned int> temp;
-  std::vector<std::vector<unsigned int>> output(Abc_NtkPoNum(pNtk), temp);
+/**
+ * Reference: src/aig/aig/aigInter.c
+ *      Aig_ManInterFast()
+ * **/
+void Lsv_AigSymmetry ( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
+    // trivial case: i1 = i2
+    if (i1 == i2) {
+        std::cout << "symmetric" << std::endl;
+        return;
+    }
+    
+    // int n = Abc_NtkCiNum( pNtk ) ;
+    Abc_Obj_t * pObj;
+    int Lits[5], i;
 
-    for( int j=0,N=vSimPatGrp.size(); j<N; ++j) {
+    Abc_Obj_t * pO = Abc_NtkPo( pNtk, o );
+    Abc_Obj_t * pNode = Abc_ObjFanin0(pO);
+    assert( pNode );
+    assert( Abc_ObjIsNode(pNode) );
+    char * pOName = Abc_ObjName(pO);
+    // std::cout << pOName << std::endl;
 
-        std::vector<unsigned int> vSimPat = vSimPatGrp[j];
+    Abc_Obj_t * pi1 = Abc_NtkPi( pNtk, i1 );
+    Abc_Obj_t * pi2 = Abc_NtkPi( pNtk, i2 );
 
-        // reset iTemp
-        Abc_NtkForEachObj(pNtk, pObj, i) {
-            pObj->iTemp = 0;
-        }
-        // Assign value to PI
-        Abc_NtkForEachPi( pNtk, pObj, i ) {
-            pObj->iTemp = (int)vSimPat[i];
-        }
+    int pI1_id = pi1->Id;
+    int pI2_id = pi2->Id;
 
-        // Traverse AIG, run simulation
-        Abc_NtkForEachObj(pNtk, pObj, i) {
-            // skip PI/PO and const1/0s
-            if (Abc_ObjType(pObj) == ABC_OBJ_PI) continue;
-            if (Abc_ObjType(pObj) == ABC_OBJ_CONST1) {
-                pObj->iTemp = (int)UINT64_MAX;
-                continue;
-            }
-            if (Abc_ObjType(pObj) == ABC_OBJ_PO) {
-                // Abc_Print(1, "Obj %s | c0: %s\n", Abc_ObjName(pObj), Abc_ObjName(Abc_ObjFanin0(pObj)));
-                continue;
-            }
-            if (Abc_ObjType(pObj) != ABC_OBJ_NODE) continue;
+    assert( Abc_NtkIsStrash( pNtk ));
 
-            // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
-            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
+    // Create Cone
+    Abc_Ntk_t * Cone = Abc_NtkCreateCone( pNtk, pNode, pOName, 1);
+    // pRoot is the po in Cone, which is slightly different from pNode from pNtk.
+    Abc_Obj_t * pRoot = Abc_ObjFanin0( Abc_NtkPo(Cone, 0) ); 
+    
+    // NtkToDar
+    Aig_Man_t * aigMan = Abc_NtkToDar( Cone, 0, 0 );
+    // int liftNum = Aig_ManObjNum(aigMan); // The number of nodes in AIG
 
+    // New Sat solver
+    sat_solver * pSat = sat_solver_new(); // SAT Solver
+    // pSat->fVerbose = 1; // verbose
+    // pSat->fPrintClause = 1; // verbose
 
-            // And-Inverter Simulation
-            Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
-            Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
-            unsigned int a = (unsigned int)Fanin0->iTemp;
-            if (Abc_ObjFaninC0(pObj)) a ^= UINT64_MAX;
-            unsigned int b = (unsigned int)Fanin1->iTemp;
-            if (Abc_ObjFaninC1(pObj)) b ^= UINT64_MAX;
-            unsigned int data = a & b;
-            
-            pObj->iTemp = (int)data;
-            // Abc_Print(1, "Data: ");
-            // printBits(data);
-            // Abc_Print(1, "\n");
-        }
+    // Add CNF into SAT solver
+    Cnf_Dat_t * pCnf1 = Cnf_Derive( aigMan, Aig_ManCoNum(aigMan)); // CoNum should be 1
+    pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf1, 1, 0 );
 
-        // Print PO
-        Abc_NtkForEachPo(pNtk, pObj, i) {
+    // Create another CNF that depend on different input variable
+    Cnf_Dat_t * pCnf2 = Cnf_Derive( aigMan, Aig_ManCoNum(aigMan)); // CoNum should be 1
+    Cnf_DataLift( pCnf2, pCnf1->nVars + 1 );
+    pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf2, 1, 0 );
 
-            unsigned int data;
-            if (Abc_ObjFaninNum(pObj) == 1) {
-                Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
-                // Abc_Obj_t * Fanin1 = Abc_ObjChild1(pObj);
-                // Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
-                // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
-                unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
-                if (Abc_ObjFaninC0(pObj)) 
-                    iTemp0 ^= UINT32_MAX;
+    // Map input constraints
+    // Aig_ManForEachCi( aigMan, pObj, i )
+    Abc_NtkForEachPi( Cone, pObj, i)
+    {
+        if (pI1_id == pObj->Id) continue;
+        if (pI2_id == pObj->Id) continue;
 
-                data = iTemp0;
-            }
-            else {
-                Abc_Print(-1, "Error: Fanin of Po has problem.");
-            }
-            // else if (Abc_ObjFaninNum(pObj) > 1) {
-            //     Abc_Obj_t * Fanin0 = Abc_ObjFanin0(pObj);
-            //     Abc_Obj_t * Fanin1 = Abc_ObjFanin1(pObj);
-            //     Abc_Print(1, "Obj : %s", Abc_ObjName(pObj));
-            //     Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
-            //     unsigned int iTemp0 = (unsigned int)Fanin0->iTemp;
-            //     if ( Abc_ObjFaninC0(pObj) ) 
-            //         iTemp0 ^= UINT32_MAX;
-            //     unsigned int iTemp1 = (unsigned int)Fanin1->iTemp;
-            //     if ( Abc_ObjFaninC1(pObj) ) 
-            //         iTemp1 ^= UINT32_MAX;
-
-            //     data = iTemp0 & iTemp1;
-            // }
-            // else {
-            //     Abc_Print(-1, "Error: Fanin of Po has problem.");
-            // }
-            // Abc_Print(1, "Po : %s | Child : %s\n", Abc_ObjName(pObj), Abc_ObjName(Fanin0));
-            // Abc_Print(1, "%s(%d)| %s(%d) \n", Abc_ObjName(Fanin0), Abc_ObjFaninC0(pObj), Abc_ObjName(Fanin1), Abc_ObjFaninC1(pObj));
-
-            pObj->iTemp = (int)data; // Is this needed?
-
-            output[i].push_back(data);
-        }
+        Lits[0] = toLitCond( pCnf1->pVarNums[pObj->Id], 0 );
+        Lits[1] = toLitCond( pCnf2->pVarNums[pObj->Id], 1 );
+        if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+            assert( 0 );
+        Lits[0] = toLitCond( pCnf1->pVarNums[pObj->Id], 1 );
+        Lits[1] = toLitCond( pCnf2->pVarNums[pObj->Id], 0 );
+        if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+            assert( 0 );
     }
 
-    // Abc_NtkForEachObj(pNtk, pObj, i) {
-    //     Abc_Print(1, "%s : ", Abc_ObjName(pObj));
-    //     printBits((unsigned int)pObj->iTemp, 3);
-    //     Abc_Print(1, "\n");
-    // }
+    // Assertion
+    Lits[0] = toLitCond( pCnf1->pVarNums[pI1_id], 0 );
+    // Lits[1] = toLitCond( pCnf2->pVarNums[pI2_id], 1 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+1 ) )
+        assert( 0 );
+    // Lits[0] = toLitCond( pCnf1->pVarNums[pI1_id], 1 );
+    Lits[0] = toLitCond( pCnf2->pVarNums[pI2_id], 0 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+1 ) )
+        assert( 0 );
+    // Lits[0] = toLitCond( pCnf1->pVarNums[pI2_id], 0 );
+    Lits[0] = toLitCond( pCnf2->pVarNums[pI1_id], 1 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+1 ) )
+        assert( 0 );
+    Lits[0] = toLitCond( pCnf1->pVarNums[pI2_id], 1 );
+    // Lits[1] = toLitCond( pCnf2->pVarNums[pI1_id], 0 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+1 ) )
+        assert( 0 );
 
-    // Print
-    Abc_NtkForEachPo(pNtk, pObj, i) {
-        Abc_Print(1, "%s : ", Abc_ObjName(pObj));
-        int eachLine = lineCount;
-        for (auto& o : output[i]) {
-            if (eachLine >= 32) {
-                printBits(o, 32);
-            }
-            else {
-                printBits(o, eachLine);
-            }
-            eachLine -= 32;
-        }
-        Abc_Print(1, "\n");
+    // XOR output
+    // std::cout << pCnf1->pVarNums[pRoot->Id] << std::endl;
+    Lits[0] = toLitCond( pCnf1->pVarNums[pRoot->Id], 0 );
+    Lits[1] = toLitCond( pCnf2->pVarNums[pRoot->Id], 0 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+        assert( 0 );
+    Lits[0] = toLitCond( pCnf1->pVarNums[pRoot->Id], 1 );
+    Lits[1] = toLitCond( pCnf2->pVarNums[pRoot->Id], 1 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+        assert( 0 );
+
+    // Lits[0] = Abc_Var2Lit(pCnf1->pVarNums[pI1_id], 0);
+    // Lits[1] = Abc_Var2Lit(pCnf1->pVarNums[pI2_id], 1);
+    // Lits[2] = Abc_Var2Lit(pCnf2->pVarNums[pI1_id], 1);
+    // Lits[3] = Abc_Var2Lit(pCnf2->pVarNums[pI2_id], 0);
+
+    // Solve
+    int status;
+    status = sat_solver_solve( pSat, NULL, NULL, (ABC_INT64_T)1000000, (ABC_INT64_T)0, (ABC_INT64_T)0, (ABC_INT64_T)0 );
+    if ( status == l_False )
+    {
+        printf( "symmetric\n" );
     }
-  
-//   Abc_Print(1, "Done Simulation.\n");
-  return;
+    else if ( status == l_True )
+    {
+        printf( "asymmetric\n" );
+
+        // derive asymmetric counterexample
+        // Aig_ManForEachCi( aigMan, pObj, i )
+        Abc_NtkForEachPi( pNtk, pObj, i )
+        {
+            std::cout << sat_solver_var_value( pSat, (pCnf1->pVarNums[pObj->Id]) );
+        }
+        std::cout << std::endl;
+        // Aig_ManForEachCi( aigMan, pObj, i )
+        Abc_NtkForEachPi( pNtk, pObj, i )
+        {
+            std::cout << sat_solver_var_value( pSat, pCnf2->pVarNums[pObj->Id] );
+        }
+        std::cout << std::endl;
+    }
+    else
+    {
+        printf( "undef\n" );
+    }
+
+
+
+    sat_solver_delete( pSat );
+    Aig_ManStop( aigMan );
+    Cnf_DataFree( pCnf1 );
+    Cnf_DataFree( pCnf2 );
+    Abc_NtkDelete( Cone );
+    return;
 }
 
-int Lsv_CommandSymAig(Abc_Frame_t* pAbc, int argc, char** argv) {
-    Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-    int c;
-    Extra_UtilGetoptReset();
-    if ( pNtk == NULL ) {
-        Abc_Print( -1, "Empty network.\n" );
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+ Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!pNtk) {
+        Abc_Print(-1, "Empty network.\n");
         return 1;
     }
 
-    int n = Abc_NtkCiNum( pNtk );
-    // Simulation Pattern in one round
-    std::vector<unsigned int> vSimPat(n+1, 0);
-    // Simulation Patterns read from infile
-    std::vector<std::vector<unsigned int>> vSimPatGrp;
+    int c;
+    Extra_UtilGetoptReset();
 
-    std::ifstream infile; // Read file ifstream
-    std::string line; // Read file buffer
-
-    int lineCount = 0; // Line count for output
+    std::string simS;
+    int po;
+    int pi1, pi2;
 
     while ( ( c = Extra_UtilGetopt(argc, argv, "h" ) ) != EOF ) {
         switch (c) {
@@ -387,101 +407,67 @@ int Lsv_CommandSymAig(Abc_Frame_t* pAbc, int argc, char** argv) {
         }
     }
 
-
     // get input string
     char ** pArgvNew;
-    char * fileSim; // Name of infile
+    char * vString;
     int nArgcNew;
     pArgvNew = argv + globalUtilOptind;
     nArgcNew = argc - globalUtilOptind;
-    if ( nArgcNew != 1 )
+    if ( nArgcNew != 3 )
     {
-        Abc_Print( -1, "There is no File.\n" );
-        return 1;
+        goto usage;
+        // Abc_Print( -1, "Number of Input is wrong.\n" );
+        // return 1;
     }
 
-    if (!pNtk) {
-        Abc_Print(-1, "Empty network.\n");
-        return 1;
-    }
+
+
+    vString = pArgvNew[0];
+    simS = std::string(vString);
+    po = std::stoi(simS);
+
+    vString = pArgvNew[1];
+    simS = std::string(vString);
+    pi1 = std::stoi(simS);
+
+    vString = pArgvNew[2];
+    simS = std::string(vString);
+    pi2 = std::stoi(simS);
+
+    // std::cout << po << " " << pi1 << " " << pi2 << " " << std::endl;
+
     if ( !Abc_NtkIsStrash(pNtk) )
     {
-        Abc_Print( -1, "Simulating Aigs can only be done for Strashed networks (run \"strash\").\n" );
+        Abc_Print( -1, "Simulating SAT can only be done for logic AIG networks (run \"strash\").\n" );
         return 1;
     }
 
-    fileSim = pArgvNew[0];
-    infile.open( fileSim );
-    if (!infile) {
-        Abc_Print( -1, "File %s cannot open.\n", fileSim );
+    // Size Check
+    if ( po >= Abc_NtkPoNum(pNtk) || po < 0 )
+    {
+        Abc_Print( -1, "pO index out of bound.\n" );
         return 1;
     }
 
-    // Abc_Print(1, "Reading file: %s\n", fileSim);
-    while (std::getline(infile, line)) {
-        if (line.length() == n + 1) {
-            if (line.back() == '\r') {
-                // Abc_Print(1, "Windows enter MDFK!\n");
-            } else return 1;
-        }
-        else if (line.length() != n) {
-          Abc_Print( -1, "The length of simulation pattern is not equal to the number of inputs.\n" );
-          return 1;
-        }
-        for (int j=0; j<n ;++j) {
-          unsigned int& input = vSimPat[j];
-          if (line[j] == '0') {
-            input = (input << 1) + 0;
-          }
-          else if (line[j] == '1') {
-            input = (input << 1) + 1;
-          }
-          else {
-            Abc_Print( -1, "The simulation pattern should be binary.\n" );
-            return 1;
-          }
-        }
-        ++lineCount;
-        if ( lineCount % 32 == 0 ) {
-            // put vSimPat into vSimPatGrp
-            vSimPatGrp.push_back(vSimPat);
-            // reset vSimPat
-            for( auto& a: vSimPat ) {
-                a = (int)0;
-            }
-        }
-    }
-    infile.close();
-
-    // if remains unpush_back patterns
-    if ( lineCount % 32 != 0 ) {
-        vSimPatGrp.push_back(vSimPat);
+    if ( pi1 >= Abc_NtkPiNum(pNtk) || pi1 < 0 )
+    {
+        Abc_Print( -1, "pI1 index out of bound.\n" );
+        return 1;
     }
 
-    // Abc_Print(1, "Number of Simulation Groups: %d\n",vSimPatGrp.size() );
-    // for (auto& v: vSimPatGrp) {
-    //     for (auto& v1: v) {
-    //         printBits(v1, lineCount);
-    //         Abc_Print(1, "\n");
-    //     }
-    // }
+    if ( pi2 >= Abc_NtkPiNum(pNtk) || pi2 < 0 )
+    {
+        Abc_Print( -1, "pI2 index out of bound.\n" );
+        return 1;
+    }
 
-    // Abc_Print(1, "Start!\n");
-
-    Lsv_AigSymmetry( pNtk , vSimPatGrp, lineCount );
+    Lsv_AigSymmetry( pNtk , po , pi1 , pi2 );
     
-    // Clear All memory
-    for( auto& grp: vSimPatGrp ) {
-        grp.clear();
-    }
-    vSimPatGrp.clear();
-    vSimPat.clear();
-
     return 0;
 
 usage:
-    Abc_Print(-2, "usage: lsv_sim_aig <input_file> [-h]\n");
-    Abc_Print(-2, "\t        Perform 32-bit parallel simulation on AIG.\n");
+    Abc_Print(-2, "usage: lsv_sym_sat <pO> <pI1> <pI2> [-h]\n");
+    Abc_Print(-2, "\t        Check symmetry on 2 variables in aig\n");
     Abc_Print(-2, "\t-h    : print the command usage\n");
     return 1;
 }
