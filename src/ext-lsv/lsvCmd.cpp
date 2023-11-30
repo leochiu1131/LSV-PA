@@ -1,9 +1,18 @@
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
+#include "sat/cnf/cnf.h"
+#include "aig/aig/aig.h"
+
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <unordered_set>
+#include <stdlib.h>
+
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 /* -> Some hints about PA#1
 
@@ -33,6 +42,15 @@ static int Lsv_CommandPrintNodes      ( Abc_Frame_t *pAbc, int argc, char **argv
 static int Abc_CommandHello           ( Abc_Frame_t *pAbc, int argc, char **argv );
 static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv );
 static int Abc_CommandLSVPallSimAIG   ( Abc_Frame_t *pAbc, int argc, char **argv );
+// Added function for PA#2
+static int Abc_CommandLSVSymBDD   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+static int Abc_CommandLSVSymSAT   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+static int Abc_CommandLSVSymALL   	  ( Abc_Frame_t *pAbc, int argc, char **argv );
+
+void displayAIGMan(Aig_Man_t *pMan);
+void displayCNFDat(Cnf_Dat_t *pCnf);
+void displaySATSolver(sat_solver_t *ss);
+
 void conductSimulation(Abc_Ntk_t *pNtk, Abc_Obj_t *pObj, bool simulaitonAct[], unsigned **simulationarr, int simArrWid);
 
 unsigned int **simulationArr;
@@ -44,7 +62,10 @@ void init(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd( pAbc, "Printing",     "hello",         Abc_CommandHello,            0 );
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_bdd",   Abc_CommandLSVSimBDD,        0 );
     Cmd_CommandAdd( pAbc, "Various",      "lsv_sim_aig",   Abc_CommandLSVPallSimAIG,    0 );
-    /* */
+    /* LSV PA#2 */
+    Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_bdd",   Abc_CommandLSVSymBDD,    	0 );
+    Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_sat",   Abc_CommandLSVSymSAT,    	0 );
+    Cmd_CommandAdd( pAbc, "Various",      "lsv_sym_all",   Abc_CommandLSVSymALL,    	0 );
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -98,6 +119,665 @@ usage:
   return 1;
 }
 
+// PA#2 1.Symmetry Checking with BDD
+static int Abc_CommandLSVSymBDD ( Abc_Frame_t *pAbc, int argc, char **argv ){
+	
+    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+
+    pNtk = Abc_FrameReadNtk(pAbc);
+	
+	// argument parsing
+	if(argc != 4){
+		Abc_Print( -2, "usage: lsv_sym_bdd <k> <i> <j> \n" );
+		Abc_Print( -2, "\t        Determine if the output pin yk is symmetric in xi and xj.\n" );
+		return 1;
+	}
+	int inK, inI, inJ;
+	inK = atoi(argv[1]);
+	inI = atoi(argv[2]);
+	inJ = atoi(argv[3]);
+	
+	// printf("This networks has Pi/Po = %d/%d\n", Abc_NtkPiNum(pNtk), Abc_NtkPoNum(pNtk));
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
+    {
+        switch ( c )
+        {
+			case 'h':
+			default:{
+				Abc_Print( -2, "usage: lsv_sym_bdd <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the BDD's output pin yk is symmetric in xi and xj.\n" );
+				return 1;
+			}
+				
+        }
+    }
+	if ( pNtk == NULL )
+    {
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
+
+	// Start deriving Cofactor of ~XiXj & Xi~Xj
+	//
+	Abc_Obj_t *pPo;
+	pPo = Abc_NtkPo(pNtk, inK);
+	// printf("%s: ",Abc_ObjName(pPo) );
+	// printf("Po node fanin/fanout : %d / %d\n",Abc_ObjFaninNum(pPo) , Abc_ObjFanoutNum(pPo));
+
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
+
+	DdManager *manager = (DdManager *)pRoot->pNtk->pManFunc;  
+	// DdNode* ddnode = (DdNode *)pRoot->pData;
+
+	DdNode *PNCofact =(DdNode *)pRoot->pData;
+	DdNode *NPCofact = (DdNode *)pRoot->pData;
+
+	Vec_Int_t *pRootIdxArr;
+	pRootIdxArr = Abc_ObjFaninVec(pRoot);
+	for(int i = 0; i < pRootIdxArr->nSize; ++i){
+		// printf("*%d*", pRootIdxArr->pArray[i]);
+		// char inputChar = argv[1][pRootIdxArr->pArray[i] - 1];
+		int currentIndex = pRootIdxArr->pArray[i];
+		// std::cout << "input( " << i << "):" <<  currentIndex << std::endl;
+
+		if(currentIndex == (inI + 1)){
+			Cudd_RecursiveDeref(manager, PNCofact);
+			PNCofact = Cudd_Cofactor(manager, PNCofact, Cudd_bddIthVar(manager, i));
+			Cudd_Ref(PNCofact);
+
+			Cudd_RecursiveDeref(manager, NPCofact);
+			NPCofact = Cudd_Cofactor(manager, NPCofact, Cudd_Not(Cudd_bddIthVar(manager, i)));
+			Cudd_Ref(NPCofact);
+		} else if(currentIndex == (inJ + 1)){
+			Cudd_RecursiveDeref(manager, PNCofact);
+			PNCofact = Cudd_Cofactor(manager, PNCofact, Cudd_Not(Cudd_bddIthVar(manager, i)));
+			Cudd_Ref(PNCofact);
+
+			Cudd_RecursiveDeref(manager, NPCofact);
+			NPCofact = Cudd_Cofactor(manager, NPCofact, Cudd_bddIthVar(manager, i));
+			Cudd_Ref(NPCofact);
+
+		}
+	}
+
+	// Check if two cofactor are equal, if yes, output and return
+	if(Cudd_EquivDC(manager, PNCofact, NPCofact, Cudd_ReadZero(manager))){
+		printf("symmetric\n");
+		return 0;
+	}else{
+		printf("asymmetric\n");
+	}
+
+	// Perform Exclusive or on two cofactored BDDs
+	DdNode *XorNode = Cudd_bddXor(manager, PNCofact, NPCofact);
+	Cudd_Ref(XorNode);
+	
+	// Cudd_PrintDebug(manager, XorNode, pRootIdxArr->nSize, 3);
+	// std::cout << "new 1: " << Cudd_CountPathsToNonZero(XorNode) << std::endl;
+	// Cudd_PrintMinterm(manager, XorNode);
+	
+	// Get some cubes in BDD
+	int *cube;
+	CUDD_VALUE_TYPE value;
+	
+	Cudd_FirstCube(manager, XorNode, &cube, &value);
+	
+	int numPis = Abc_NtkPiNum(pNtk);
+
+	// Two Counter examples are the size of Primary Inputs
+	char ctrExample1[numPis+1] = "";
+	char ctrExample2[numPis+1] = "";
+	memset(ctrExample1, '0', numPis);
+	memset(ctrExample2, '0', numPis);
+
+	// making the two counter examples by extracting the FirstCube informaiton
+	for(int i = 0; i < pRootIdxArr->nSize; ++i){
+
+		int BddIndex = (pRootIdxArr->pArray[i] - 1);
+		// std::cout << "input( " << i << "):" <<  BddIndex << std::endl;
+		
+		if(cube[i] == 1){
+			// includes 1 and 2(done't care)
+			ctrExample1[BddIndex] = ctrExample2[BddIndex] = '1';
+		}else{
+			ctrExample1[BddIndex] = ctrExample2[BddIndex] = '0';
+		}
+		// boolean value @<i> and @<j> shall be inverted 0/1
+		if(BddIndex == inI){
+			ctrExample1[BddIndex] = '1';
+			ctrExample2[BddIndex] = '0';
+		}else if(BddIndex == inJ){
+			ctrExample1[BddIndex] = '0';
+			ctrExample2[BddIndex] = '1';
+		}
+	}
+
+	printf("%s\n", ctrExample1);
+	printf("%s\n", ctrExample2);
+
+	return 0;
+}
+
+// PA#2 2.Symmetry Checking with SAT
+static int Abc_CommandLSVSymSAT( Abc_Frame_t *pAbc, int argc, char **argv ){
+    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+
+	// argument parsing
+	if(argc != 4){
+		Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+		Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+		return 1;
+	}
+	int inK, inI, inJ;
+	inK = atoi(argv[1]);
+	inI = atoi(argv[2]);
+	inJ = atoi(argv[3]);
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
+    {
+        switch ( c )
+        {
+			case 'h':{
+				Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+				return 1;
+				break;
+			}
+			default:{
+				Abc_Print( -2, "usage: lsv_sym_sat <k> <i> <j> \n" );
+				Abc_Print( -2, "\t        Determine if the AIG's output pin yk is symmetric in xi and xj using SAT solver.\n" );
+				return 1;
+			}
+        }
+    }
+
+    if ( pNtk == NULL )
+    {
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
+
+	// printf("Original Ntk: \n");
+	// Lsv_NtkPrintNodes(pNtk);
+
+	Abc_Obj_t *pCo = Abc_NtkCo(pNtk, inK);
+	//Extract the Cone of Yk
+	Abc_Ntk_t *pNtk_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pCo), Abc_ObjName(pCo), 1);
+	// derives an equivalent Aig_Man_t (global AIG circuit) from an Abc_Ntk_t network.
+	Aig_Man_t *pMan = Abc_NtkToDar(pNtk_cone, 0, 0);
+	// displayAIGMan(pMan);
+	
+	// These stores the AIG I/O indexes
+	std::vector<int> cinIdxvec; 
+	int cinIdxi = inI + 1, cinIdxj = inJ + 1;
+	int coutIdx;
+	int twinDistance;
+	
+	std::vector <Aig_Obj_t *>cinObjvec;
+	std::vector <Aig_Obj_t *>cinObjIJ;
+	Aig_Obj_t *coutObj;
+
+	
+	// Extract Ci indexes
+	Aig_Obj_t *ppIndexes; int counterIdx;
+	Aig_ManForEachCi(pMan, ppIndexes, counterIdx){
+		int canIndex = Aig_ObjId(ppIndexes);
+		if(!(canIndex == cinIdxi || canIndex == cinIdxj)){
+			cinIdxvec.push_back(canIndex);
+			cinObjvec.push_back(ppIndexes);
+		}else{
+			cinObjIJ.push_back(ppIndexes);
+		}
+	}
+	
+	//Extract Co index
+	coutObj = ((Aig_Obj_t *)Vec_PtrEntry(pMan->vCos, 0));
+	coutIdx = Aig_ObjId(coutObj);
+
+
+	// Display indexes
+	// std::cout << "These are Cins: [" << cinIdxi << "] [" << cinIdxj << "] ";
+	// for(std::vector<int>::iterator it = cinIdxvec.begin(); it != cinIdxvec.end(); it++){
+	// 	std::cout << *it << " ";
+	// }
+	// std::cout << std::endl << "This is Cout: " << coutIdx << std::endl;
+
+	// Initialise SAT Solver
+	sat_solver *sv = sat_solver_new();
+	// sv->fPrintClause = 1;
+	// sv->verbosity = 2;
+	// sv->fVerbose = 1;
+	
+	// obtain the corresponding CNF formula CA, which depends on variables V1,...,Vn
+	Cnf_Dat_t *cnfdat1 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+
+	// Readjust the indexes that map to PI/ SymPIs and Po
+	std::vector<int> cinAllIdxVec_Cnf;
+
+	std::vector<int> cinidxvec_Cnf;
+	int cinIdxi_Cnf, cinIdxj_Cnf;
+	int coutIdx_Cnf;
+
+	Aig_ManForEachCi(pMan, ppIndexes, counterIdx){
+		cinAllIdxVec_Cnf.push_back(cnfdat1->pVarNums[ppIndexes->Id]);
+	}
+
+	// std::cout << "Full PI order: ";
+	for(std::vector<int>::iterator it= cinAllIdxVec_Cnf.begin(); it != cinAllIdxVec_Cnf.end(); ++it){
+		// std::cout << *it << " ";
+	}
+	// std::cout << std::endl;
+
+	for(int i = 0; i < cinObjvec.size(); ++i){
+		Aig_Obj_t *payload = cinObjvec[i];
+		cinidxvec_Cnf.push_back(cnfdat1->pVarNums[payload->Id]);
+		// std::cout << i << "]" << payload->Id << " -> " << cnfdat1->pVarNums[payload->Id] << std::endl;
+	}
+	cinIdxi_Cnf = cnfdat1->pVarNums[cinObjIJ[0]->Id];
+	cinIdxj_Cnf = cnfdat1->pVarNums[cinObjIJ[1]->Id];
+	coutIdx_Cnf = cnfdat1->pVarNums[coutObj->Id];
+	// std::cout << "SYM1: " << cinObjIJ[0]->Id << " -> " << cinIdxi_Cnf << std::endl;
+	// std::cout << "SYM2: " << cinObjIJ[1]->Id << " -> " << cinIdxj_Cnf << std::endl;
+	// std::cout << "OUT: " << coutObj->Id << " -> " << coutIdx_Cnf << std::endl;
+	
+
+	// add the CNF into the SAT solver.
+	// displayCNFDat(cnfdat1);
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat1, 1, 0);
+
+	// create another CNF formula CB that depends on different input variables V(n+1),...,V(2n), add to solver.
+	Cnf_Dat_t *cnfdat2 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+	twinDistance = cnfdat1->nVars;
+	Cnf_DataLift(cnfdat2, twinDistance);
+	// displayCNFDat(cnfdat2);
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat2, 1, 0);
+
+	// This is the enable variable that is required
+	int envar = sat_solver_addvar(sv);
+	lit Lit[1];
+	Lit[0] = toLitCond(envar, 0);
+	int Cid = sat_solver_addclause(sv, Lit, Lit + 1);
+	assert(Cid);
+	// std::cout << "Added control enable var: " << envar << std::endl;
+
+	for (int i = 0; i < cinidxvec_Cnf.size(); i++){
+		sat_solver_add_buffer_enable(sv, cinidxvec_Cnf[i], cinidxvec_Cnf[i]+twinDistance, envar, 0);
+	}
+	sat_solver_add_buffer_enable(sv, cinIdxi_Cnf, cinIdxj_Cnf+twinDistance, envar, 0);
+	sat_solver_add_buffer_enable(sv, cinIdxj_Cnf, cinIdxi_Cnf+twinDistance, envar, 0);
+
+
+
+	// Adding Constraint 1: VA(Yk) xor VB(Yk)
+	lit Lits[2];
+	int Cid2;
+	int iVarA = coutIdx_Cnf;
+	int iVarB = coutIdx_Cnf + twinDistance;
+	
+	Lits[0] = toLitCond(iVarA, 0);
+	Lits[1] = toLitCond(iVarB, 0);
+	Cid = sat_solver_addclause(sv, Lits, Lits + 2);
+
+	Lits[0] = toLitCond(iVarA, 1);
+	Lits[1] = toLitCond(iVarB, 1);
+	Cid2 = sat_solver_addclause(sv, Lits, Lits + 2);
+	
+	if(!Cid || !Cid2){
+		printf("symmetric\n");
+		return 0;
+	}
+
+
+	sat_solver_add_buffer_enable(sv, coutIdx_Cnf, coutIdx_Cnf+twinDistance, envar, 1);
+
+	int solveAns = sat_solver_solve(sv, NULL, NULL, 0, 0, 0, 0);
+	if(solveAns == l_False){
+		printf("symmetric\n");
+		return 0;
+	}
+
+	// Start processing asymmetric scenarios
+	printf("asymmetric\n");
+	
+	// Two Counter examples are the size of Primary Inputs
+	int numPis = cinAllIdxVec_Cnf.size();
+	char ctrExample1[numPis+1] = "";
+	char ctrExample2[numPis+1] = "";
+	memset(ctrExample1, '0', numPis);
+	memset(ctrExample2, '0', numPis);
+
+	
+	// sat_solver_var_value
+	// for(std::vector<int>::iterator it= cinAllIdxVec_Cnf.begin(); it != cinAllIdxVec_Cnf.end(); ++it){
+
+	// 	std::cout << (*it) << ": " << sat_solver_var_value(sv, *it) << std::endl;
+	// }
+
+	for(int i = 0; i < cinAllIdxVec_Cnf.size(); ++i){
+		if(sat_solver_var_value(sv, cinAllIdxVec_Cnf[i]) == 0){
+			ctrExample1[i] = ctrExample2[i] = '0';
+		}else{
+			ctrExample1[i] = ctrExample2[i] = '1';
+		}
+	}
+	ctrExample1[inI] = '0';
+	ctrExample2[inI] = '1';
+	ctrExample1[inJ] = '1';
+	ctrExample2[inJ] = '0';
+
+	printf("%s\n", ctrExample1);
+	printf("%s\n", ctrExample2);
+
+	return 0;
+}
+
+
+// PA#2 3.Symmetry Checking with Incremental SAT
+static int Abc_CommandLSVSymALL( Abc_Frame_t *pAbc, int argc, char **argv ){
+    Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+    int c;
+
+	// argument parsing
+	if(argc != 2){
+		Abc_Print( -2, "usage: lsv_sym_sat <k>\n" );
+		Abc_Print( -2, "\t        find out all (i,j) pairs (i < j) to make the output pin Yk symmetric in Xi and Xj.\n" );
+		return 1;
+	}
+	int inK;
+	inK = atoi(argv[1]);
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
+    {
+        switch ( c )
+        {
+			case 'h':{
+				Abc_Print( -2, "usage: lsv_sym_sat <k>\n" );
+				Abc_Print( -2, "\t        find out all (i,j) pairs (i < j) to make the output pin Yk symmetric in Xi and Xj.\n" );
+				return 1;
+				break;
+			}
+			default:{
+				Abc_Print( -2, "usage: lsv_sym_sat <k>\n" );
+				Abc_Print( -2, "\t        find out all (i,j) pairs (i < j) to make the output pin Yk symmetric in Xi and Xj.\n" );
+				return 1;
+			}
+        }
+    }
+
+    if ( pNtk == NULL ){
+        Abc_Print( -1, "Empty network.\n" );
+        return 1;
+    }
+
+
+	Abc_Obj_t *pCo = Abc_NtkCo(pNtk, inK);
+	//Extract the Cone of Yk
+	Abc_Ntk_t *pNtk_cone = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pCo), Abc_ObjName(pCo), 1);
+	// derives an equivalent Aig_Man_t (global AIG circuit) from an Abc_Ntk_t network.
+	Aig_Man_t *pMan = Abc_NtkToDar(pNtk_cone, 0, 0);
+	
+
+	// These stores the AIG I/O indexes
+	std::vector<int> cinIdxvec; 
+	int coutIdx;
+	int twinDistance;
+	
+	std::vector <Aig_Obj_t *>cinObjvec;
+	Aig_Obj_t *coutObj;
+
+	
+	// Extract Ci indexes
+	Aig_Obj_t *ppIndexes; int counterIdx;
+	Aig_ManForEachCi(pMan, ppIndexes, counterIdx){
+		int canIndex = Aig_ObjId(ppIndexes);
+		cinIdxvec.push_back(canIndex);
+		cinObjvec.push_back(ppIndexes);
+	}
+	
+	//Extract Co index
+	coutObj = ((Aig_Obj_t *)Vec_PtrEntry(pMan->vCos, 0));
+	coutIdx = Aig_ObjId(coutObj);
+
+	// Initialise SAT Solver
+	sat_solver *sv = sat_solver_new();
+
+	// Set info printings
+	// sv->fPrintClause = 1;
+	// sv->verbosity = 2;
+	// sv->fVerbose = 1;
+	
+	// obtain the corresponding CNF formula CA, which depends on variables V1,...,Vn
+	Cnf_Dat_t *cnfdat1 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+
+	// Readjust the indexes that map to PI/ SymPIs and Po
+	std::vector<int> cinidxvec_Cnf;
+	int coutIdx_Cnf;
+
+
+	for(int i = 0; i < cinObjvec.size(); ++i){
+		Aig_Obj_t *payload = cinObjvec[i];
+		cinidxvec_Cnf.push_back(cnfdat1->pVarNums[payload->Id]);
+	}
+	coutIdx_Cnf = cnfdat1->pVarNums[coutObj->Id];
+
+	// add the CNF into the SAT solver.
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat1, 1, 0);
+
+	// create another CNF formula CB that depends on different input variables V(n+1),...,V(2n), add to solver.
+	Cnf_Dat_t *cnfdat2 = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+	twinDistance = cnfdat1->nVars;
+	Cnf_DataLift(cnfdat2, twinDistance);
+	// displayCNFDat(cnfdat2);
+	Cnf_DataWriteIntoSolverInt(sv, cnfdat2, 1, 0);
+
+	// Printing Pi/Po info
+	// std::cout << "Ci(A): ";
+	// for(int i = 0; i < cinIdxvec.size(); ++i){
+	// 	std::cout << cinIdxvec[i] << "(" << cinidxvec_Cnf[i] << ") ";
+	// }
+	// std::cout << std::endl << "Ci(B): ";
+	// for(int i = 0; i < cinIdxvec.size(); ++i){
+	// 	std::cout << cinIdxvec[i] << "(" << cinidxvec_Cnf[i] + twinDistance << ") ";
+	// }
+	// std::cout << std::endl << "Co(A): " << coutIdx << "(" << coutIdx_Cnf << ") ";
+	// std::cout << std::endl << "Co(B): " << coutIdx << "(" << coutIdx_Cnf + twinDistance << ") " << std::endl;
+
+	/* Start adding incremental SAT solving specific clauses */
+
+	int iVarA, iVarB, iVarC, iVarD;
+
+	// Introduce m control variables VH(0) to VH(m-1)
+	int PiCount = cinIdxvec.size(); 
+	int ctrlVars[PiCount];
+	for(int i = 0; i < PiCount; ++i){
+		ctrlVars[i] = sat_solver_addvar(sv);
+	}
+	// std::cout << "Control variables: ";
+	// for (int i = 0; i < PiCount; i++){
+	// 	std::cout << ctrlVars[i] << " ";
+	// }
+	// std::cout << std::endl;
+
+
+	// Adding Constraint 1: VA(Yk) xor VB(Yk)
+	// std::cout << "Inserting Constraint 1: " << std::endl;
+
+	int LitsSize = (PiCount < 4)? 4 : PiCount;
+	lit Lits[LitsSize];
+	int Cid;
+	int Cid2;
+	iVarA = coutIdx_Cnf;
+	iVarB = coutIdx_Cnf + twinDistance;
+	
+	Lits[0] = toLitCond(iVarA, 0);
+	Lits[1] = toLitCond(iVarB, 0);
+	Cid = sat_solver_addclause(sv, Lits, Lits + 2);
+
+	Lits[0] = toLitCond(iVarA, 1);
+	Lits[1] = toLitCond(iVarB, 1);
+	Cid2 = sat_solver_addclause(sv, Lits, Lits + 2);
+	
+	if(!Cid || !Cid2){
+		// This indicates all Pis ae symmetric
+		for(int i = 0; i < PiCount-1; ++i){
+			for(int j = i+1; j < PiCount; ++j){
+				printf("%d %d\n",i, j);
+			}
+		}
+		return 0;
+	}
+
+
+	// Adding Constraints 2: (VA(t) = VB(t)) or VH(t) for all 0 < t < m
+	// std::cout << "Inserting Constraint 2: " << std::endl;
+
+	for(int i = 0; i < cinidxvec_Cnf.size(); ++i){
+		iVarA = cinidxvec_Cnf[i];
+		iVarB = iVarA + twinDistance;
+		iVarC = ctrlVars[i];
+		
+		Lits[0] = toLitCond(iVarA, 0);
+		Lits[1] = toLitCond(iVarB, 1);
+		Lits[2] = toLitCond(iVarC, 0);
+		Cid = sat_solver_addclause(sv, Lits, Lits + 3);
+		assert(Cid);
+
+		Lits[0] = toLitCond(iVarA, 1);
+		Lits[1] = toLitCond(iVarB, 0);
+		Lits[2] = toLitCond(iVarC, 0);
+		Cid = sat_solver_addclause(sv, Lits, Lits + 3);
+		assert(Cid);
+	}
+
+	// Adding Constraints 3 : (VA(t1) == VB(t2)) or ~VH(t1) or ~VH(t2)
+	// Adding Constraints 4 : (VA(t2) == VB(t1)) or ~VH(t1) or ~VH(t2)
+	// std::cout << "Inserting Constraint 3&4: " << std::endl;
+	for(int t2 = 1; t2 < cinidxvec_Cnf.size(); ++t2){
+		for(int t1 = 0; t1 < t2; ++t1){
+			// Constraints 3
+			iVarA = cinidxvec_Cnf[t1]; // VA(t1)
+			iVarB = cinidxvec_Cnf[t2] + twinDistance; // VB(t2)
+			iVarC = ctrlVars[t1];
+			iVarD = ctrlVars[t2];
+
+			Lits[0] = toLitCond(iVarA, 0);
+			Lits[1] = toLitCond(iVarB, 1);
+			Lits[2] = toLitCond(iVarC, 1);
+			Lits[3] = toLitCond(iVarD, 1);
+			Cid = sat_solver_addclause(sv, Lits, Lits + 4);
+			assert(Cid);
+
+			Lits[0] = toLitCond(iVarA, 1);
+			Lits[1] = toLitCond(iVarB, 0);
+			Cid = sat_solver_addclause(sv, Lits, Lits + 4);
+			assert(Cid);
+
+			// Constraints 4
+			iVarA = cinidxvec_Cnf[t2]; // VA(t2)
+			iVarB = cinidxvec_Cnf[t1] + twinDistance; // VB(t1)
+
+
+			Lits[0] = toLitCond(iVarA, 0);
+			Lits[1] = toLitCond(iVarB, 1);
+			Cid = sat_solver_addclause(sv, Lits, Lits + 4);
+			assert(Cid);
+
+			Lits[0] = toLitCond(iVarA, 1);
+			Lits[1] = toLitCond(iVarB, 0);
+			Cid = sat_solver_addclause(sv, Lits, Lits + 4);
+			assert(Cid);
+		}
+	}
+
+
+	for(int i = 0; i < PiCount-1; ++i){
+		for(int j = i+1; j < PiCount; ++j){
+			for(int idx = 0; idx < LitsSize; ++idx){
+				if((idx == i) || (idx == j)){
+					Lits[idx] = toLitCond(ctrlVars[idx], 0);
+				}else{
+					Lits[idx] = toLitCond(ctrlVars[idx], 1);
+				}
+			}
+			int solveAns = sat_solver_solve(sv, Lits, Lits + LitsSize, 0, 0, 0, 0);
+			if(solveAns == l_False){
+				printf("%d %d\n",i, j);
+			}
+		}
+	}
+
+	return 0;
+}
+
+void displayAIGMan(Aig_Man_t *pMan) {
+    int i;
+    Aig_Obj_t *pObj;
+
+    printf("Number of Nodes: %d\n", Aig_ManObjNum(pMan));
+	printf("Ci/Co: %d/%d\n", Aig_ManCiNum(pMan), Aig_ManCoNum(pMan));
+
+    Aig_ManForEachObj(pMan, pObj, i) {
+        // Print information for each node, e.g., pObj->Type, fanins, etc.
+        printf("Node-%d: ID = %d\n", i, pObj->Id);
+        printf("PI: %d, PO: %d\n", Aig_ObjIsCi(pObj), Aig_ObjIsCo(pObj));
+        if ( Aig_ObjFanin0(pObj) ) {
+            printf("Fanin0: ID = %d\n", Aig_ObjFanin0(pObj)->Id);
+        }
+        if ( Aig_ObjFanin1(pObj) ) {
+            printf("Fanin1: ID = %d\n", Aig_ObjFanin1(pObj)->Id);
+        }
+        printf("\n");
+    }
+}
+
+void displayCNFDat(Cnf_Dat_t *pCnf) {
+	printf("%d nVars, %d nLiterals, %d clauses\n", pCnf->nVars, pCnf->nLiterals, pCnf->nClauses);
+	printf("pVarNums:");
+	for(int i = 0; i < pCnf->nVars; ++i){
+		printf("%d ", pCnf->pVarNums[i]);
+	}
+	printf("\n");
+    for ( int i = 0; i < pCnf->nClauses; i++ ) {
+        int *pLit, *pStop;
+        for ( pLit = pCnf->pClauses[i], pStop = pCnf->pClauses[i + 1]; pLit < pStop; pLit++ ) {
+            printf("%d ", ( *pLit & 1 ) ? -( *pLit >> 1 ) : ( *pLit >> 1 ));
+        }
+        printf("\n");
+    }
+	for (int i=0; i < pCnf->nClauses; ++i){
+
+	}
+}
+
+void displaySATSolver(sat_solver_t *ss){
+	printf("%d nvars, %d nClauses", sat_solver_nvars(ss), sat_solver_nclauses(ss));
+
+	Sat_Mem_t *pMem = &(ss->Mem);
+	clause *c;
+	int i,k;
+	Sat_MemForEachClause(pMem, c, i, k){
+		clause_print_(c);
+	}
+	Sat_MemForEachClause2(pMem, c, i, k){
+		clause_print_(c);
+	}
+	// for(int i = 0; i < sat_solver_nclauses(ss); ++i){
+	// 	for(int j = 0; j < ss->wlists[i].size; ++j){
+	// 		std::cout << ss->wlists->ptr[j];
+	// 	}
+	// 	std::cout << std::endl;
+	// }
+	
+}
+
+
 static int Abc_CommandHello ( Abc_Frame_t *pAbc, int argc, char **argv ){
     Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
     int c;
@@ -143,7 +823,7 @@ usage:
     return 1;
 }
 
-static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv )
+static int Abc_CommandLSVSimBDD ( Abc_Frame_t *pAbc, int argc, char **argv )
 {
     Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
     int c;
@@ -175,8 +855,8 @@ static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv
         return 1;
     }
 
-	Abc_Obj_t *pPi;
-	int ithPi;
+	// Abc_Obj_t *pPi;
+	// int ithPi;
 
 	Abc_Obj_t *pPo;
 	int ithPo;
@@ -186,7 +866,6 @@ static int Abc_CommandLSVSimBDD       ( Abc_Frame_t *pAbc, int argc, char **argv
 
 		Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
 		assert( Abc_NtkIsBddLogic(pRoot->pNtk) );
-
 
 		// Abc_Obj_t *pFanin;
 		// int ithFanin;
