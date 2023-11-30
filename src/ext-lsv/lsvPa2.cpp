@@ -46,10 +46,60 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
 
     Abc_Obj_t * pObj;
     pObj = Abc_ObjChild0(pPo); // Last bdd Node
+    char** piNames = (char**) Abc_NodeGetFaninNames(pObj)->pArray;
+    
     assert( Abc_NtkIsBddLogic(pObj->pNtk) );
 
     DdManager * dd = (DdManager *)pObj->pNtk->pManFunc;  
 
+////////////// Wish's Code
+//     Abc_Obj_t * pRoot = Abc_ObjChild0(pPo);
+//     DdManager * dd = (DdManager *)pRoot->pNtk->pManFunc;
+//   DdNode* bFunc = (DdNode *)pRoot->pData;   Cudd_Ref(bFunc);
+//   char** piNames = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+//   int fainNum = Abc_ObjFaninNum(pRoot);
+
+//   DdNode* Cof_iBar_j;
+//   DdNode* Cof_jBar_i;
+//   int ithFanin = -1;
+//   int jthFanin = -1;
+//   for (int i = 0; i < fainNum; ++i) {
+//     if (strcmp(piNames[i], Abc_ObjName(Abc_NtkPi(pNtk, i1))) == 0)
+//       ithFanin = i;
+//     if (strcmp(piNames[i], Abc_ObjName(Abc_NtkPi(pNtk, i2))) == 0)
+//       jthFanin = i;
+//   }
+//   std::cout << ithFanin << " " << jthFanin << std::endl;
+//   if (ithFanin == -1 && jthFanin == -1) {
+//     printf("symmetric\n");
+//     return;
+//   }
+//   else if (ithFanin == -1) { // i is don't care
+//     Cof_iBar_j = Cudd_Cofactor(dd, bFunc, Cudd_bddIthVar(dd, jthFanin));             Cudd_Ref(Cof_iBar_j);
+//     Cof_jBar_i = Cudd_Cofactor(dd, bFunc, Cudd_Not(Cudd_bddIthVar(dd, jthFanin)));   Cudd_Ref(Cof_jBar_i);
+//   }
+//   else if (jthFanin == -1) { // j is don't care
+//     Cof_iBar_j = Cudd_Cofactor(dd, bFunc, Cudd_Not(Cudd_bddIthVar(dd, ithFanin)));   Cudd_Ref(Cof_iBar_j);
+//     Cof_jBar_i = Cudd_Cofactor(dd, bFunc, Cudd_bddIthVar(dd, ithFanin));             Cudd_Ref(Cof_jBar_i);
+//   }
+//   else {
+//     // ithVar and jthVar are both in k's fanin, consider the cofactor
+//     DdNode* cube_iBar_j = Cudd_bddAnd(dd, Cudd_Not(Cudd_bddIthVar(dd, ithFanin)), Cudd_bddIthVar(dd, jthFanin));   Cudd_Ref(cube_iBar_j);
+//     DdNode* cube_jBar_i = Cudd_bddAnd(dd, Cudd_Not(Cudd_bddIthVar(dd, jthFanin)), Cudd_bddIthVar(dd, ithFanin));   Cudd_Ref(cube_jBar_i);
+//     Cof_iBar_j = Cudd_Cofactor(dd, bFunc, cube_iBar_j);   Cudd_Ref(Cof_iBar_j);
+//     Cof_jBar_i = Cudd_Cofactor(dd, bFunc, cube_jBar_i);   Cudd_Ref(Cof_jBar_i);
+//     Cudd_RecursiveDeref(dd, cube_iBar_j);
+//     Cudd_RecursiveDeref(dd, cube_jBar_i);
+//   }
+//   if (Cof_iBar_j == Cof_jBar_i) {
+//     printf("symmetric\n");
+//   }
+//   else {
+//     printf("asymmetric\n");
+//   }
+//   return;
+
+///////////// My Code
     // print current Po name
     // (void) fprintf( dd->out, "%s", Abc_ObjName(pPo) );
 
@@ -71,21 +121,21 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
     Abc_Obj_t * temp;
     int i=0;
     bool ok1 = false, ok2 = false;
-    Abc_NtkForEachObj( pNtk, temp, i) {
+    int faninId;
+    // Here we use Abc_ObjForEachFanin, not Abc_NtkForEachPi
+    // due to the fact that we should only get the pIs which
+    // exists in the cone. Later in the output part we will
+    // handle the output properly using Abc_NtkForEachPi.
+    Abc_ObjForEachFaninId( pObj, faninId, i) {
         if (ok1 && ok2) break;
-        if (temp->Id == pPi1->Id) {
-            bddIndex1 = i - 1;
+        if (faninId == pPi1->Id) {
+            bddIndex1 = i;
             ok1 = true;
         }
-        else if (temp->Id == pPi2->Id) {
-            bddIndex2 = i - 1;
+        else if (faninId == pPi2->Id) {
+            bddIndex2 = i;
             ok2 = true;
         }
-    }
-
-    if (bddIndex1 == -1 || bddIndex2 == -1) {
-        Abc_Print(1, "You've input non-exist index.\n");
-        return;
     }
 
     // Check Permutation of bddIndex
@@ -95,14 +145,38 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
     // Debug Info // USEFUL
     // Cudd_PrintDebug(dd, bdd, 10, 3); 
 
-    // The first function  : x1 x2_bar
-    DdNode* f1 = Cudd_Cofactor_with_Ref(dd, bdd, bddIndex1, bddIndex2, true);
+    DdNode * f1, * f2;
 
-    // The second function : x1_bar x2
-    DdNode* f2 = Cudd_Cofactor_with_Ref(dd, bdd, bddIndex1, bddIndex2, false);
+    if (ok1 & ok2) {
+        // The first function  : x1 x2_bar
+        f1 = Cudd_Cofactor_with_Ref(dd, bdd, bddIndex1, bddIndex2, true);
+
+        // The second function : x1_bar x2
+        f2 = Cudd_Cofactor_with_Ref(dd, bdd, bddIndex1, bddIndex2, false);
+    }
+    else if (ok1) {
+        DdNode * bddVar1 = Cudd_bddIthVar(dd, bddIndex1);
+        Cudd_Ref(bddVar1);
+        f1 = Cudd_Cofactor(dd, bdd, bddVar1);
+        f2 = Cudd_Cofactor(dd, bdd, Cudd_Not(bddVar1));
+        Cudd_RecursiveDeref(dd, bddVar1);
+    }
+    else if (ok2) {
+        DdNode * bddVar2 = Cudd_bddIthVar(dd, bddIndex2);
+        Cudd_Ref(bddVar2);
+        f1 = Cudd_Cofactor(dd, bdd, Cudd_Not(bddVar2));
+        f2 = Cudd_Cofactor(dd, bdd, bddVar2);
+        Cudd_RecursiveDeref(dd, bddVar2);
+    }
+    else {
+        printf("symmetric\n");
+        return;
+    }
+
+    // std::cout << f1 << " " << f2 << std::endl;
 
     // XOR
-    DdNode * eq = Cudd_bddXor( dd, f1, f2);
+    DdNode * eq = Cudd_bddXor( dd, f1, f2 );
     Cudd_Ref(eq);
 
     // Check symmetry
@@ -115,7 +189,7 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
         return;
     }
 
-    // if asymmetric, give counter example
+    // if asymmetric, give counter-example (cex)
     int ** counterCube = new(int*);
     double * value = new(double);
     Cudd_FirstCube(dd, eq, counterCube, value); // return DdGen* is unneeded
@@ -126,30 +200,56 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
         return;
     }
     else {
+        std::vector<char> cex(Abc_NtkPiNum( pNtk ));
+        Abc_Obj_t * pPi;
+        Abc_NtkForEachPi( pNtk, pPi, i ){
+            //cout<<"id : "<<pPi->Id<<" "<<Abc_ObjName(pPi)<<" x : "<<x<<" cube "<<cube_cex[0][x]<<endl;
+            // cex[pPi->Id - 1] = counterCube[0][i];
+            if (counterCube[0][i] == 2){
+                cex[pPi->Id - 1] = '0';
+            }
+            else {
+                cex[pPi->Id - 1] = counterCube[0][i] ? '1' : '0';
+            }
+        }
+        cex[i1] = '1';
+        cex[i2] = '0';
+
+        for (size_t i = 0; i < cex.size(); ++i) {
+            std::cout << cex[i];
+        }
+        std::cout << std::endl;
+
+        cex[i1] = '0';
+        cex[i2] = '1';
+
+        for (size_t i = 0; i < cex.size(); ++i) {
+            std::cout << cex[i];
+        }
+        std::cout << std::endl;
+
+        cex.clear();
+
         // for (int l=0, N=Abc_NtkPiNum( pNtk ); l<N; ++l ) {
-        //     std::cout << counterCube[0][l] ;
+        //     if ( l == i1 ) std::cout << "1" ;
+        //     else if ( l == i2 ) std::cout << "0" ;
+        //     else if (counterCube[0][l] == 2) std::cout << "0";
+        //     else std::cout << counterCube[0][l];
         // }
         // std::cout << std::endl;
-        for (int l=0, N=Abc_NtkPiNum( pNtk ); l<N; ++l ) {
-            if ( l == bddIndex1 ) std::cout << "1" ;
-            else if ( l == bddIndex2 ) std::cout << "0" ;
-            else if (counterCube[0][l] == 2) std::cout << "1";
-            else std::cout << counterCube[0][l];
-        }
-        std::cout << std::endl;
-        for (int l=0, N=Abc_NtkPiNum( pNtk ); l<N; ++l ) {
-            if ( l == bddIndex1 ) std::cout << "0" ;
-            else if ( l == bddIndex2 ) std::cout << "1" ;
-            else if (counterCube[0][l] == 2) std::cout << "1" ;
-            else std::cout << counterCube[0][l] ;
-        }
-        std::cout << std::endl;
+        // for (int l=0, N=Abc_NtkPiNum( pNtk ); l<N; ++l ) {
+        //     if ( l == i1 ) std::cout << "0" ;
+        //     else if ( l == i2 ) std::cout << "1" ;
+        //     else if (counterCube[0][l] == 2) std::cout << "0" ;
+        //     else std::cout << counterCube[0][l] ;
+        // }
+        // std::cout << std::endl;
     }
 
 
     delete [] counterCube[0];
     delete [] counterCube;
-    delete [] value;
+    delete(value);
     return;
 }
 
@@ -547,7 +647,6 @@ void Lsv_AigAllSymmetry ( Abc_Ntk_t * pNtk , int o) {
             if ( j >= i ) continue;
             
             // (c)
-            // printf("(c)\n");
             Lits[0] = toLitCond( pCnf1->pVarNums[pObj1->Id], 0 );
             Lits[1] = toLitCond( pCnf2->pVarNums[pObj2->Id], 1 );
             Lits[2] = toLitCond( assumptionOffset + i,  1 );
@@ -562,7 +661,6 @@ void Lsv_AigAllSymmetry ( Abc_Ntk_t * pNtk , int o) {
                 assert( 0 );
 
             // (d)
-            // printf("(d)\n");
             Lits[0] = toLitCond( pCnf1->pVarNums[pObj2->Id], 0 );
             Lits[1] = toLitCond( pCnf2->pVarNums[pObj1->Id], 1 );
             Lits[2] = toLitCond( assumptionOffset + i,  1 );
@@ -598,8 +696,6 @@ void Lsv_AigAllSymmetry ( Abc_Ntk_t * pNtk , int o) {
 
     // Below is the part to iterate all is and js
     int j;
-    // i = 0;
-    // j = 2;
 
     // std::cout << std::endl;
     // std::cout << "Start!" << std::endl;
@@ -653,7 +749,11 @@ void Lsv_AigAllSymmetry ( Abc_Ntk_t * pNtk , int o) {
         }
     }
 
-
+    // Print sat stats (not useful)
+    // FILE* pFile;
+    // char * pFileName = "satStats.txt";
+    // pFile = fopen( pFileName, "w" );
+    // Sat_SolverPrintStats(pFile, pSat);
 
     sat_solver_delete( pSat );
     Aig_ManStop( aigMan );
