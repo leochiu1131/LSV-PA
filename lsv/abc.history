@@ -1,0 +1,11 @@
+source -s abc.rc
+read pa1/add.blif 
+collapse
+lsv_sym_bdd
+lsv_sym_bdd 0 0 1
+lsv_sim_bdd 0 0 1
+lsv_sim_bdd 000
+lsv_sim_bdd 111
+lsv_sim_bdd 101
+lsv_sim_bdd 010
+lsv_sim_bdd 100
