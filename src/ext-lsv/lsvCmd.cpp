@@ -552,8 +552,8 @@ int Lsv_CommandLSVSYMSAT(Abc_Frame_t* pAbc, int argc, char** argv) {
   int y = std::atoi(argv[1]);
   int x1 = std::atoi(argv[2]);
   int x2 = std::atoi(argv[3]);
-  printf("x1: %d\n", x1);
-  printf("x2: %d\n", x2);
+  // printf("x1: %d\n", x1);
+  // printf("x2: %d\n", x2);
 
   Abc_Obj_t* pPo = Abc_NtkPo(pNtk, y);
   Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
