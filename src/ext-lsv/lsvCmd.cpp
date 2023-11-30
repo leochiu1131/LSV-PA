@@ -5,19 +5,28 @@
 
 #include "bdd/cudd/cudd.h"
 #include "bdd/cudd/cuddInt.h"
+#include "sat/cnf/cnf.h"
 
 #include <vector>
+#include <unordered_map>
+#include <iostream>
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+ }
+using namespace std;
 
 static int Lsv_CommandPrintNodes (Abc_Frame_t* pAbc, int argc, char** argv); //argument count , argument value
 static int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimulateAig(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymBDD     (Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSAT     (Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_node_", Lsv_CommandPrintNodes , 0); 
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd"    , Lsv_CommandSimulateBdd, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig"    , Lsv_CommandSimulateAig, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd"    , Lsv_CommandSymBDD     , 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat"    , Lsv_CommandSymSAT     , 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -76,7 +85,7 @@ usage:
   return 1;
 }
 
-// ================= LSV Command SymBDD Used ===================================
+// ================= LSV Command SymBDD Start ===================================
 // todo : will PO change order?
 int Lsv_CommandSimulateBddChar(Abc_Frame_t* pAbc, char* input_pattern , int pOk) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
@@ -140,25 +149,15 @@ int Lsv_CommandSimulateBddChar(Abc_Frame_t* pAbc, char* input_pattern , int pOk)
     }
     return 0;
 }
-// ================= LSV Command SymBDD Start ===================================
-
-void printArray(char *array, int n) {
-    for (int k = 0; k < n; k++) {
-        printf("%c ", array[k]);
-    }
-    printf("\n");
-}
 
 void iterateCombinations(Abc_Frame_t* pAbc, char *array, int n, int current, int k, int i, int j) {
     if (current == n) {
         array[i] = '0';
         array[j] = '1';
-        printArray(array, n);
-        int result1 = Lsv_CommandSimulateBddChar(pAbc, array, k);
+        // int result1 = Lsv_CommandSimulateBddChar(pAbc, array, k);
         array[i] = '1';
         array[j] = '0';
-        printArray(array, n);
-        int result2 = Lsv_CommandSimulateBddChar(pAbc, array, k);
+        // int result2 = Lsv_CommandSimulateBddChar(pAbc, array, k);
         printf("\n");
         // return ((result1 == result2) ? true : false) ;
         return ;
@@ -177,6 +176,15 @@ void iterateCombinations(Abc_Frame_t* pAbc, char *array, int n, int current, int
     iterateCombinations(pAbc, array, n, current + 1, k, i, j);
 }
 
+void printCubePattern(char* CubePattern, int numPIs){
+  for (int i = 0; i < numPIs; ++i) {
+      if (CubePattern[i] == 1) { printf("1"); }
+      else if (CubePattern[i] == 2) { printf("0"); }
+      else if(CubePattern[i] == 0){ printf("0"); }
+      else { printf("?"); }
+  }
+  printf("\n"); 
+}
 
 int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
   if (argc != 4) { // Expecting four arguments: cmd, i, j, and k
@@ -184,27 +192,158 @@ int Lsv_CommandSymBDD(Abc_Frame_t* pAbc, int argc, char** argv) {
       return 1;
   }
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  int k = atoi(argv[1]); // Convert k from string to integer
-  int i = atoi(argv[2]); // Convert i from string to integer
-  int j = atoi(argv[3]); // Convert j from string to integer
+  if( Abc_NtkIsBddLogic(pNtk) == false){  
+    Abc_Print(-2, "Network is not BDD \n");
+    return 1; 
+  }
+
+  int outk = stoi(argv[1]); // Convert k from string to integer
+  int ini  = stoi(argv[2]); // Convert i from string to integer
+  int iBdd = -1;
+  int inj  = stoi(argv[3]); // Convert j from string to integer
+  int jBdd = -1;
   int numPIs = Abc_NtkPiNum(pNtk); // Number of Primary Inputs
-  // int numPOs = Abc_NtkPoNum(pNtk); // Number of Primary Outputs
-  // Your code logic here, using i, j, and k
-  char *array = (char *)calloc(numPIs, sizeof(char));
-  array[i] = '1'; // not important
-  array[j] = '1'; // not important
+  int numPOs = Abc_NtkPoNum(pNtk); // Number of Primary Outputs
+  if ( numPIs <= ini || numPIs <= inj || numPOs <= outk  ) { Abc_Print(-2, "index error \n"); return 1; }
+  if (ini == inj){ printf("symmetric\n");  return 1;}
+  if (ini > inj ){ ABC_SWAP(int, ini, inj); }
+  assert(ini <= inj); 
 
-  // Iterate through all combinations
-  iterateCombinations(pAbc, array, numPIs, 0, k, i, j);
+  Abc_Obj_t* pPo = Abc_NtkPo(pNtk, outk);
+  Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo); 
+  DdManager* ddManager = (DdManager*)pRoot->pNtk->pManFunc;
+  DdNode   * Func = (DdNode*)pRoot->pData;
+  cuddRef(Func);
+  // hash map of PI string name to index
+  Abc_Obj_t *pPi;
+  int idx;
+  std::unordered_map< std::string, int > ABCPiName2Idx;
+  Abc_NtkForEachPi( pNtk, pPi, idx ){
+    ABCPiName2Idx[ Abc_ObjName(pPi)  ] = idx;
+  }
+  char** FinArray = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+  int FinNum = Abc_ObjFaninNum(pRoot);
+  
+  for (int i = 0; i < FinNum; i++) { //compare name
+      if (strcmp(FinArray[i], Abc_ObjName(Abc_NtkPi(pNtk, ini))) == 0) { iBdd = i; }
+      if (strcmp(FinArray[i], Abc_ObjName(Abc_NtkPi(pNtk, inj))) == 0) { jBdd = i; }
+  }
 
-  free(array);
-  // int t = Lsv_CommandSimulateBddChar(pAbc, temp);
+  if( iBdd == -1 && jBdd == -1 ){ printf("symmetric\n");  return 1; }
+  DdNode* Cofac_i0_j1;
+  DdNode* Cofac_i1_j0;
+  // iBdd is DC
+  if( iBdd == -1 && jBdd != -1 ){  
+    Cofac_i0_j1 = Cudd_Cofactor(ddManager, Func, Cudd_bddIthVar(ddManager, jBdd));          Cudd_Ref(Cofac_i0_j1);
+    Cofac_i1_j0 = Cudd_Cofactor(ddManager, Func, Cudd_Not(Cudd_bddIthVar(ddManager, jBdd)));Cudd_Ref(Cofac_i1_j0);
+  }
+  // jBdd is DC
+  else if( iBdd != -1 && jBdd == -1 ){  
+    Cofac_i0_j1 = Cudd_Cofactor(ddManager, Func, Cudd_Not(Cudd_bddIthVar(ddManager, iBdd))); Cudd_Ref(Cofac_i0_j1);
+    Cofac_i1_j0 = Cudd_Cofactor(ddManager, Func, Cudd_bddIthVar(ddManager, iBdd));           Cudd_Ref(Cofac_i1_j0);
+  }
+  // jBdd and iBdd both in BDD
+  else{
+    assert (iBdd != -1 && jBdd != -1 );
+
+    DdNode* cube_i0    = Cudd_Not(Cudd_bddIthVar(ddManager, iBdd));   Cudd_Ref( cube_i0 );
+    DdNode* cube_j1    = Cudd_bddIthVar(ddManager, jBdd);             Cudd_Ref( cube_j1 );
+    DdNode* Cofac_i0   = Cudd_Cofactor(ddManager, Func, cube_i0);     Cudd_Ref( Cofac_i0);
+    Cofac_i0_j1        = Cudd_Cofactor(ddManager, Cofac_i0, cube_j1); Cudd_Ref( Cofac_i0_j1);
+    Cudd_RecursiveDeref(ddManager, cube_i0);
+    Cudd_RecursiveDeref(ddManager, cube_j1);
+    Cudd_RecursiveDeref(ddManager, Cofac_i0);
+
+
+    DdNode* cube_i1    = Cudd_bddIthVar(ddManager, iBdd);             Cudd_Ref( cube_i1 );
+    DdNode* cube_j0    = Cudd_Not(Cudd_bddIthVar(ddManager, jBdd));   Cudd_Ref( cube_j0 );
+    DdNode* Cofac_i1   = Cudd_Cofactor(ddManager, Func, cube_i1);     Cudd_Ref( Cofac_i1);
+    Cofac_i1_j0        = Cudd_Cofactor(ddManager, Cofac_i1, cube_j0); Cudd_Ref( Cofac_i1_j0);
+    Cudd_RecursiveDeref(ddManager, cube_i1);
+    Cudd_RecursiveDeref(ddManager, cube_j0);
+    Cudd_RecursiveDeref(ddManager, Cofac_i1);
+  }
+  if (Cofac_i1_j0 == Cofac_i0_j1) {
+    printf("symmetric\n");
+  }
+  else{
+    printf("asymmetric\n");
+    DdNode* XOR = Cudd_bddXor (ddManager, Cofac_i1_j0, Cofac_i0_j1); cuddRef(XOR);
+    // char* CubePattern = new char [ddManager->size ];
+    char* BDDCubePattern = (char*)malloc(numPIs * sizeof(char));
+    char* ABCcounterExample = (char*)malloc(numPIs * sizeof(char));
+    for (int i = 0; i < numPIs; ++i) { 
+      BDDCubePattern[i] = 2;
+      ABCcounterExample[i] = 2;
+    }
+    // printf("numPI:%d\n",numPIs);
+    // printf("FanInNum:%d\n", FinNum);
+    int success = Cudd_bddPickOneCube(ddManager, XOR, BDDCubePattern); //Picks one on-set cube randomly from the given DD
+    if(success == 0){ printf("random pick failed\n"); assert(0); }
+    // printCubePattern( BDDCubePattern, numPIs); //BDD Inputs
+    for (int i = 0; i < FinNum; i++) { // here
+        ABCcounterExample[ABCPiName2Idx[FinArray[i]]] = BDDCubePattern[i] ;
+    }
+    // printCubePattern( ABCcounterExample, numPIs); //ABC Inputs
+
+    ABCcounterExample[ini] = 0; // cofactor 01
+    ABCcounterExample[inj] = 1;
+    printCubePattern(ABCcounterExample , numPIs);
+    ABCcounterExample[ini] = 1; // cofactor 10
+    ABCcounterExample[inj] = 0;
+    printCubePattern(ABCcounterExample , numPIs);
+
+    delete[] BDDCubePattern;
+    delete[] ABCcounterExample;
+    Cudd_RecursiveDeref(ddManager, XOR);
+  }
+  
+  Cudd_RecursiveDeref(ddManager, Cofac_i0_j1);
+  Cudd_RecursiveDeref(ddManager, Cofac_i1_j0);
+  Cudd_RecursiveDeref(ddManager, Func);
+  
   return 0;
 }
 
 // ================= LSV Command Try End ===================================
 
+int Lsv_CommandSymSAT(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t * pNtk = Abc_FrameReadNtk(pAbc);
+  if (!Abc_NtkIsStrash(pNtk)) {
+    Abc_Print(-2, "Network is not AIG \n");      
+    return 1;
+  }
 
+  int outk = stoi(argv[1]); // Convert k from string to integer
+  int ini  = stoi(argv[2]); // Convert i from string to integer
+  int inj  = stoi(argv[3]); // Convert j from string to integer
+  int numPIs = Abc_NtkPiNum(pNtk); // Number of Primary Inputs
+  int numPOs = Abc_NtkPoNum(pNtk); // Number of Primary Outputs
+  if ( numPIs <= ini || numPIs <= inj || numPOs <= outk  ) { Abc_Print(-2, "index error \n"); return 1; }
+  if (ini == inj){ printf("symmetric\n");  return 1;}
+  if (ini > inj ){ ABC_SWAP(int, ini, inj); }
+  assert(ini <= inj); 
+
+  // Abc_Obj_t* PO = Abc_NtkPo(pNtk, outk);
+  // 1. extract cone
+  Abc_Ntk_t* ConeNtk = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(Abc_NtkPo(pNtk, outk)), Abc_ObjName(Abc_NtkPo(pNtk, outk)), 1);
+  // 2. derive a corresponding AIG circuit.
+  Aig_Man_t* AigNtk = Abc_NtkToDar(ConeNtk, 0, 0);
+  // 3. sat solver
+  sat_solver* satSolver = sat_solver_new();
+  // 4. cnf data
+  Cnf_Dat_t* CnfData = Cnf_Derive(AigNtk, 1);
+  // 5. cnf write to SAT solver
+  Cnf_DataWriteIntoSolverInt( satSolver, CnfData, 1, 0 );
+  // 6. Use Cnf DataLift to create another CNF formula CB 
+  Cnf_DataLift(CnfData, Aig_ManObjNum(AigNtk));
+  Cnf_DataWriteIntoSolverInt( satSolver, CnfData, 1, 0 );
+  // 7. For each input xt of the circuit, find its corresponding CNF variables
+
+
+  printf("symmetric\n");  return 1;
+
+}
 
 
 int Lsv_CommandSimulateBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
