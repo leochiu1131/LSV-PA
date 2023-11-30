@@ -17,12 +17,12 @@ using namespace std;
 
 static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
-// static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
     Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
-    // Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
+    Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -363,7 +363,7 @@ void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int out_k, int in_i, int in_j) {
   sat_solver_addclause( sat, cls, cls + 2 );
 
   Aig_ManForEachCo(aig_ckt, pObj, ith) {
-    // if ( ith == out_k ) {
+    // if ( ith == 0 ) {
     cls[0] = toLitCond( cnf1->pVarNums[pObj->Id], 0 );
     cls[1] = toLitCond( cnf2->pVarNums[pObj->Id], 0 );
     sat_solver_addclause( sat, cls, cls + 2 );
@@ -413,3 +413,144 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
   Lsv_NtkSymSat(pNtk, k, i, j);
   return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+void Lsv_NtkSymAll( Abc_Ntk_t* pNtk, int out_k ) {
+  // printf( "out_k: %d\n", out_k );
+  Abc_Ntk_t *cone_yk;
+  Abc_Obj_t *pRoot = Abc_ObjFanin0( Abc_NtkPo(pNtk, out_k) );
+  sat_solver *sat;
+  Aig_Man_t *aig_ckt;
+  Cnf_Dat_t *cnf1, *cnf2, *cnfh;
+  int cls[2];
+  int clsh[3];
+  int cls4[4];
+
+  // step1
+  cone_yk = Abc_NtkCreateCone( pNtk, pRoot, Abc_ObjName(Abc_NtkPo(pNtk, out_k)), 1 );
+  // step2
+  aig_ckt = Abc_NtkToDar( cone_yk, 0, 1 );
+  // step3
+  sat = sat_solver_new();
+  // step4
+  cnf1 = Cnf_Derive( aig_ckt, 1 );
+  // step5
+  Cnf_DataWriteIntoSolverInt(sat, cnf1, 1, 0);
+  // step6
+  cnf2 = Cnf_Derive( aig_ckt, 1 );
+  Cnf_DataLift( cnf2, cnf1->nVars );
+  Cnf_DataWriteIntoSolverInt( sat, cnf2, 1, 0 );
+
+  cnfh = Cnf_Derive( aig_ckt, 1 );
+  Cnf_DataLift( cnfh, cnf2->nVars * 2 );
+  Cnf_DataWriteIntoSolverInt( sat, cnfh, 1, 0 );
+
+
+  Aig_Obj_t *pObj;
+  int ith;
+
+  cls[0] = toLitCond( cnf1->pVarNums[Aig_ManCo( aig_ckt, 0 )->Id], 0 );
+  cls[1] = toLitCond( cnf2->pVarNums[Aig_ManCo( aig_ckt, 0 )->Id], 0 );
+  sat_solver_addclause( sat, cls, cls + 2 );
+  cls[0] = toLitCond( cnf1->pVarNums[Aig_ManCo( aig_ckt, 0 )->Id], 1 );
+  cls[1] = toLitCond( cnf2->pVarNums[Aig_ManCo( aig_ckt, 0 )->Id], 1 );
+  sat_solver_addclause( sat, cls, cls + 2 );
+
+  Aig_ManForEachCi(aig_ckt, pObj, ith) {
+      clsh[0] = toLitCond( cnf1->pVarNums[pObj->Id], 0 );
+      clsh[1] = toLitCond( cnf2->pVarNums[pObj->Id], 1 );
+      clsh[2] = toLitCond( cnfh->pVarNums[pObj->Id], 0 );
+      sat_solver_addclause( sat, clsh, clsh + 3 );
+      clsh[0] = toLitCond( cnf1->pVarNums[pObj->Id], 1 );
+      clsh[1] = toLitCond( cnf2->pVarNums[pObj->Id], 0 );
+      clsh[2] = toLitCond( cnfh->pVarNums[pObj->Id], 0 );
+      sat_solver_addclause( sat, clsh, clsh + 3 );
+
+      clsh[0] = toLitCond( cnf1->pVarNums[pObj->Id], 0 );
+      clsh[1] = toLitCond( cnf2->pVarNums[pObj->Id], 0 );
+      clsh[2] = toLitCond( cnfh->pVarNums[pObj->Id], 1 );
+      sat_solver_addclause( sat, clsh, clsh + 3 );
+      clsh[0] = toLitCond( cnf1->pVarNums[pObj->Id], 1 );
+      clsh[1] = toLitCond( cnf2->pVarNums[pObj->Id], 1 );
+      clsh[2] = toLitCond( cnfh->pVarNums[pObj->Id], 1 );
+      sat_solver_addclause( sat, clsh, clsh + 3 );
+  }
+
+
+  for ( int i = 0; i < ( int )Aig_ManCiNum( aig_ckt ) - 1; i++ ) {
+    for ( int j = i + 1; j < ( int )Aig_ManCiNum(aig_ckt); j++ ) {
+      int cnf1_i = cnf1->pVarNums[Aig_ManCi(aig_ckt, i)->Id];
+      int cnf1_j = cnf1->pVarNums[Aig_ManCi(aig_ckt, j)->Id];
+      int cnf2_i = cnf2->pVarNums[Aig_ManCi(aig_ckt, i)->Id];
+      int cnf2_j = cnf2->pVarNums[Aig_ManCi(aig_ckt, j)->Id];
+      int cnfh_i = cnfh->pVarNums[Aig_ManCi(aig_ckt, i)->Id];
+      int cnfh_j = cnfh->pVarNums[Aig_ManCi(aig_ckt, j)->Id];
+
+      cls4[0] = toLitCond( cnf1_j, 0 );
+      cls4[1] = toLitCond( cnf2_i, 1 );
+      cls4[2] = toLitCond( cnfh_i, 1 );
+      cls4[3] = toLitCond( cnfh_j, 1 );
+      sat_solver_addclause( sat, cls4, cls4 + 4 );
+
+      cls4[0] = toLitCond( cnf1_j, 1 );
+      cls4[1] = toLitCond( cnf2_i, 0 );
+      cls4[2] = toLitCond( cnfh_i, 1 );
+      cls4[3] = toLitCond( cnfh_j, 1 );
+      sat_solver_addclause( sat, cls4, cls4 + 4 );
+
+      cls4[0] = toLitCond( cnf1_i, 0 );
+      cls4[1] = toLitCond( cnf2_j, 1 );
+      cls4[2] = toLitCond( cnfh_i, 1 );
+      cls4[3] = toLitCond( cnfh_j, 1 );
+      sat_solver_addclause( sat, cls4, cls4 + 4 );
+
+      cls4[0] = toLitCond( cnf1_i, 1 );
+      cls4[1] = toLitCond( cnf2_j, 0 );
+      cls4[2] = toLitCond( cnfh_i, 1 );
+      cls4[3] = toLitCond( cnfh_j, 1 );
+      sat_solver_addclause( sat, cls4, cls4 + 4 );
+    }
+  }
+
+  for( int i = 0; i < ( int )Aig_ManCiNum( aig_ckt ) - 1; i++ ){
+    for( int j = i + 1; j < ( int )Aig_ManCiNum( aig_ckt ); j++ ){
+      // cout<<"try"<<endl;
+      lit try_cls[] = {toLitCond( cnfh->pVarNums[Aig_ManCi( aig_ckt, i )->Id], 0 ), 
+                 toLitCond( cnfh->pVarNums[Aig_ManCi( aig_ckt, j )->Id], 0 )};
+      
+      int answer = sat_solver_solve( sat, try_cls, try_cls + 2, 0, 0, 0, 0);
+      if( answer == -1 ){
+        printf( "%d %d\n", i, j );
+      }
+    }
+  }
+
+  return;
+}
+
+int Lsv_CommandSymAll( Abc_Frame_t* pAbc, int argc, char** argv ) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+//   int c;
+  Extra_UtilGetoptReset();
+
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  int k = atoi( argv[1] );
+  Lsv_NtkSymAll( pNtk, k );
+  return 0;
+}
+
+
