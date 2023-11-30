@@ -1,0 +1,10 @@
+.model test_model
+.inputs x y z
+.outputs y0
+.names x y t0
+11 1
+.names t0 z y0
+01 1
+10 1
+11 1
+.end
