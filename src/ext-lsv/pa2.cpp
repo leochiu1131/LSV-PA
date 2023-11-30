@@ -11,7 +11,6 @@ extern "C"{
 }
 
 
-/*
 
 // lsv_sym_bdd (Symmetry Checking with BDD)
 
@@ -165,13 +164,13 @@ usage:
 
 
 
-*/
 
 
 
 
 
-/*
+
+
 
 // lsv_sym_sat (Symmetry Checking with SAT)
 
@@ -363,7 +362,7 @@ usage:
 }
 
 
-*/
+
 
 
 
