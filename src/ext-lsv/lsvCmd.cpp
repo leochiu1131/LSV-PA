@@ -3,17 +3,31 @@
 #include "base/main/mainInt.h"
 #include <iostream>
 #include <fstream>
-
+#include "sat/cnf/cnf.h"
+#include "bdd/cudd/cudd.h"
+#include "bdd/cudd/cuddInt.h"
+#include <stdio.h>
+#include <string.h>
 using namespace std;
+
+extern "C" {
+	Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimBdd(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSimAig(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_bdd", Lsv_CommandSimBdd, 0);
 	Cmd_CommandAdd(pAbc, "LSV", "lsv_sim_aig", Lsv_CommandSimAig, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_bdd", Lsv_CommandSymBdd, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_sat", Lsv_CommandSymSat, 0);
+	Cmd_CommandAdd(pAbc, "LSV", "lsv_sym_all", Lsv_CommandSymAll, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -66,6 +80,10 @@ usage:
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
+
+////////////////////////////////////////////////////////////////////////
+///                        PA1                                       ///
+////////////////////////////////////////////////////////////////////////
 
 void Lsv_NtkSimBdd(Abc_Ntk_t* pNtk, char* arg) {
 	int inputNum = Abc_NtkCiNum(pNtk);
@@ -249,3 +267,442 @@ usage:
 	Abc_Print(-2, "\t-h    : print the command usage\n");
 	return 1;
 }
+
+////////////////////////////////////////////////////////////////////////
+///                        PA2                                       ///
+////////////////////////////////////////////////////////////////////////
+
+void Lsv_NtkSymBdd(Abc_Ntk_t* pNtk, int k, int i, int j) {
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	// total Fin number of pNtk
+	int CiNum = Abc_NtkCiNum(pNtk);
+	// Fin number of pPo (may be less)
+	int FaninNum = Abc_ObjFaninNum(pRoot);
+
+	DdManager* dd = (DdManager*)pNtk->pManFunc;
+	char* inputName1 = Abc_ObjName(Abc_NtkPi(pNtk, i));
+	char* inputName2 = Abc_ObjName(Abc_NtkPi(pNtk, j));
+	char** vNamesIn = (char**) Abc_NodeGetFaninNames(pRoot)->pArray;
+	DdNode* d1 = (DdNode*)pRoot->pData;
+	DdNode* d2 = (DdNode*)pRoot->pData;
+	Cudd_Ref(d1);
+	Cudd_Ref(d2);
+	for (int l = 0; l < FaninNum; ++l) {
+		if (strcmp(inputName1, vNamesIn[l]) == 0) {
+			DdNode* temp1 = Cudd_Cofactor(dd, d1, dd->vars[l]);
+			Cudd_Ref(temp1);
+			DdNode* temp2 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[l]));
+			Cudd_Ref(temp2);
+			Cudd_RecursiveDeref(dd, d1);
+			d1 = temp1;
+			Cudd_RecursiveDeref(dd, d2);
+			d2 = temp2;
+		}
+		if (strcmp(inputName2, vNamesIn[l]) == 0) {
+			DdNode* temp1 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[l]));
+			Cudd_Ref(temp1);
+			DdNode* temp2 = Cudd_Cofactor(dd, d2, dd->vars[l]);
+			Cudd_Ref(temp2);
+			Cudd_RecursiveDeref(dd, d1);
+			d1 = temp1;
+			Cudd_RecursiveDeref(dd, d2);
+			d2 = temp2;
+		}
+	}
+
+	// check if d1 == d2
+	if (d1 == d2) {
+		cout << "symmetric" << endl;
+	} else {
+		string s1, s2;
+		for (int l = 0; l < CiNum; ++l) {
+
+			// check if l is i, j
+			if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), inputName1) == 0) {
+				s1 += '0';
+				s2 += '1';
+				continue;
+			} else if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), inputName2) == 0) {
+				s1 += '1';
+				s2 += '0';
+				continue;
+			}
+
+			int ddvar = -1;
+			for (int m = 0; m < FaninNum; ++m) {
+				if (strcmp(Abc_ObjName(Abc_NtkPi(pNtk, l)), vNamesIn[m]) == 0) {
+					ddvar = m;
+					continue;
+				}
+			}
+			// not appear in pPo
+			if (ddvar < 0) {
+				s1 += '0';
+				s2 += '0';
+				continue;
+			} else {
+				DdNode* temp1 = Cudd_Cofactor(dd, d1, dd->vars[ddvar]);
+				DdNode* temp2 = Cudd_Cofactor(dd, d2, dd->vars[ddvar]);
+				Cudd_Ref(temp1);
+				Cudd_Ref(temp2);
+				if (temp1 != temp2) {
+					Cudd_RecursiveDeref(dd, d1);
+					Cudd_RecursiveDeref(dd, d2);
+					d1 = temp1;
+					d2 = temp2;
+					s1 += '1';
+					s2 += '1';
+				} 
+				else {
+					Cudd_RecursiveDeref(dd, temp1);
+					Cudd_RecursiveDeref(dd, temp2);
+					DdNode* temp3 = Cudd_Cofactor(dd, d1, Cudd_Not(dd->vars[ddvar]));
+					DdNode* temp4 = Cudd_Cofactor(dd, d2, Cudd_Not(dd->vars[ddvar]));
+					Cudd_Ref(temp3);
+					Cudd_Ref(temp4);
+					Cudd_RecursiveDeref(dd, d1);
+					Cudd_RecursiveDeref(dd, d2);
+					d1 = temp3;
+					d2 = temp4;
+					s1 += '0';
+					s2 += '0';
+				}
+			}
+		}
+		cout << "asymmetric" << endl;
+		cout << s1 << endl;
+		cout << s2 << endl;
+	}
+	Cudd_RecursiveDeref(dd, d1);
+	Cudd_RecursiveDeref(dd, d2);
+
+
+}
+
+void Lsv_NtkSymSat(Abc_Ntk_t* pNtk, int k, int i, int j) {
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	Abc_Ntk_t* cone = Abc_NtkCreateCone(pNtk, pRoot, Abc_ObjName(pRoot), 1);
+	Aig_Man_t* aig = Abc_NtkToDar(cone, 0, 0);
+	sat_solver* solver = sat_solver_new();
+	Cnf_Dat_t* cnf1 = Cnf_Derive(aig, 1);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf1, 1, 0);
+	
+	// create cnf2
+	Cnf_Dat_t* cnf2 = Cnf_Derive(aig, 1);
+	Cnf_DataLift(cnf2, cnf1->nVars);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf2, 1, 0);
+
+	Aig_Obj_t* pObj;
+	int l;
+	Aig_ManForEachCi(aig, pObj, l) {
+		if (l != i && l != j) {
+			lit arr1[] = {toLitCond(cnf1->pVarNums[pObj->Id], 1), toLitCond(cnf2->pVarNums[pObj->Id], 0)};
+			lit arr2[] = {toLitCond(cnf1->pVarNums[pObj->Id], 0), toLitCond(cnf2->pVarNums[pObj->Id], 1)};
+			sat_solver_addclause(solver, arr1, arr1 + 2);
+			sat_solver_addclause(solver, arr2, arr2 + 2);
+		}
+	}
+
+	// va(xi) = vb(xj)
+	// va(xj) = vb(xj)
+	Aig_Obj_t* xi = Aig_ManCi(aig, i);
+	Aig_Obj_t* xj = Aig_ManCi(aig, j);
+	lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 1) };
+	lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 0) };
+	lit arr3[] = { toLitCond(cnf1->pVarNums[xj->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1) };
+	lit arr4[] = { toLitCond(cnf1->pVarNums[xj->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0) };
+	sat_solver_addclause(solver, arr1, arr1 + 2);
+	sat_solver_addclause(solver, arr2, arr2 + 2);
+	sat_solver_addclause(solver, arr3, arr3 + 2);
+	sat_solver_addclause(solver, arr4, arr4 + 2);
+	
+	// add yk xor clause
+	Aig_Obj_t* yk = Aig_ManCo(aig, 0);
+	lit arr5[] = {toLitCond(cnf1->pVarNums[yk->Id], 1), toLitCond(cnf2->pVarNums[yk->Id], 1)};
+	lit arr6[] = {toLitCond(cnf1->pVarNums[yk->Id], 0), toLitCond(cnf2->pVarNums[yk->Id], 0)};
+	sat_solver_addclause(solver, arr5, arr5 + 2);
+	sat_solver_addclause(solver, arr6, arr6 + 2);
+
+	// solver solve
+	int result = sat_solver_solve_internal(solver);
+	if (result == -1) {
+		cout << "symmetric" << endl;
+	} else {
+		string s1, s2;
+		Aig_ManForEachCi(aig, pObj, l) {
+			s1 += to_string(sat_solver_var_value(solver, cnf1->pVarNums[pObj->Id]));
+			s2 += to_string(sat_solver_var_value(solver, cnf2->pVarNums[pObj->Id]));
+		}
+		cout << "asymmetric" << endl;
+		cout << s1 << endl;
+		cout << s2 << endl;
+	}
+}
+
+void Lsv_NtkSymAll(Abc_Ntk_t* pNtk, int k) {
+	Abc_Obj_t* pPo = Abc_NtkPo(pNtk, k);
+	Abc_Obj_t* pRoot = Abc_ObjFanin0(pPo);
+	Abc_Ntk_t* cone = Abc_NtkCreateCone(pNtk, pRoot, Abc_ObjName(pRoot), 1);
+	Aig_Man_t* aig = Abc_NtkToDar(cone, 0, 0);
+	sat_solver* solver = sat_solver_new();
+	Cnf_Dat_t* cnf1 = Cnf_Derive(aig, 1);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf1, 1, 0);
+	
+	// create cnf2
+	Cnf_Dat_t* cnf2 = Cnf_Derive(aig, 1);
+	Cnf_DataLift(cnf2, cnf1->nVars);
+	solver = (sat_solver*)Cnf_DataWriteIntoSolverInt(solver, cnf2, 1, 0);
+
+	Aig_Obj_t* xi,* xj;
+	int i, j;
+
+
+
+	// vh arr
+	int vhArr[Abc_NtkCiNum(pNtk)];
+	for (i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
+		vhArr[i] = sat_solver_addvar(solver);
+	}
+	
+	// (va(t) = vb(t)) or vh(t)
+	Aig_ManForEachCi(aig, xi, i) {
+		lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1), toLitCond(vhArr[i], 0) };
+		lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0), toLitCond(vhArr[i], 0) };
+		sat_solver_addclause(solver, arr1, arr1 + 3);
+		sat_solver_addclause(solver, arr2, arr2 + 3);
+	}
+
+	// (va(xi) = vb(xj)) or vh(xi)' or vh(xj)'
+	// (va(xj) = vb(xi)) or vh(xi)' or vh(xj)'
+	Aig_ManForEachCi(aig, xi, i) {
+		for (j = i + 1; (j < Vec_PtrSize(aig->vCis)) && (((xj) = (Aig_Obj_t *)Vec_PtrEntry(aig->vCis, j)), 1); j++) {
+			lit vhxiComp = toLitCond(vhArr[i], 1);
+			lit vhxjComp = toLitCond(vhArr[j], 1);
+			lit arr1[] = { toLitCond(cnf1->pVarNums[xi->Id], 0), toLitCond(cnf2->pVarNums[xj->Id], 1), vhxiComp, vhxjComp };
+			lit arr2[] = { toLitCond(cnf1->pVarNums[xi->Id], 1), toLitCond(cnf2->pVarNums[xj->Id], 0), vhxiComp, vhxjComp };
+			lit arr3[] = { toLitCond(cnf1->pVarNums[xj->Id], 0), toLitCond(cnf2->pVarNums[xi->Id], 1), vhxiComp, vhxjComp };
+			lit arr4[] = { toLitCond(cnf1->pVarNums[xj->Id], 1), toLitCond(cnf2->pVarNums[xi->Id], 0), vhxiComp, vhxjComp };
+			sat_solver_addclause(solver, arr1, arr1 + 4);
+			sat_solver_addclause(solver, arr2, arr2 + 4);
+			sat_solver_addclause(solver, arr3, arr3 + 4);
+			sat_solver_addclause(solver, arr4, arr4 + 4);
+		}
+	}
+	
+	// va(yk) xor vb(yk)
+	Aig_Obj_t* yk = Aig_ManCo(aig, 0);
+	lit arr5[] = {toLitCond(cnf1->pVarNums[yk->Id], 1), toLitCond(cnf2->pVarNums[yk->Id], 1)};
+	lit arr6[] = {toLitCond(cnf1->pVarNums[yk->Id], 0), toLitCond(cnf2->pVarNums[yk->Id], 0)};
+	sat_solver_addclause(solver, arr5, arr5 + 2);
+	sat_solver_addclause(solver, arr6, arr6 + 2);
+
+
+	bool symArr[Abc_NtkCiNum(pNtk)][Abc_NtkCiNum(pNtk)];
+	memset(symArr, false, sizeof(symArr));
+
+	// solver solve i, j
+	for (i = 0; i < Abc_NtkCiNum(pNtk); ++i) {
+		for (j = i + 1; j < Abc_NtkCiNum(pNtk); ++j) {
+			
+			// find if i, j symmetry
+			bool canCont = false;
+			for (int a = 0; a < i; ++a) {
+				if (symArr[a][i] && symArr[a][j]) {
+					cout << i << " " << j << endl;
+					symArr[i][j] = true;
+					symArr[j][i] = true;
+					canCont = true;
+					break;
+				}
+			}
+			if (canCont) continue;
+
+			lit arr7[] = { toLitCond(vhArr[i], 0), toLitCond(vhArr[j], 0)};
+			int result = sat_solver_solve(solver, arr7, arr7 + 2, 0, 0, 0, 0);
+			if (result == -1) {
+				cout << i << " " << j << endl;
+				symArr[i][j] = true;
+				symArr[j][i] = true;
+			}
+		}
+	}
+
+}
+
+
+int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	int k, i, j;
+	int CiNum = Abc_NtkCiNum(pNtk);
+	int CoNum = Abc_NtkCoNum(pNtk);
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsBddLogic(pNtk)) {
+		Abc_Print(-1, "Network is not logic BDD networks (run \"collapse\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong argument amount.\n");
+		return 1;
+	}
+	try {
+		k = stoi(argv[1]);
+		i = stoi(argv[2]);
+		j = stoi(argv[3]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	if (i < 0 || i >= CiNum) {
+		Abc_Print(-1, "i exceeds range.\n");
+		return 1;
+	}
+	if (j < 0 || j >= CiNum) {
+		Abc_Print(-1, "j exceeds range.\n");
+		return 1;
+	}
+	if (i == j) {
+		Abc_Print(-1, "i, j are the same.\n");
+		return 1;
+	}
+	// if (i > j) swap(i, j);
+	Lsv_NtkSymBdd(pNtk, k, i, j);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_bdd [-h]\n");
+	Abc_Print(-2, "\t        check if i j symmetric to k with bdd\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
+int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	int k, i, j;
+	int CiNum = Abc_NtkCiNum(pNtk);
+	int CoNum = Abc_NtkCoNum(pNtk);
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsStrash(pNtk)) {
+		Abc_Print(-1, "Network is not logic AIG networks (run \"strash\").\n");
+		return 1;
+	}
+	if (argc != 4) {
+		Abc_Print(-1, "Wrong input!!!\n");
+		return 1;
+	}
+	try {
+		k = stoi(argv[1]);
+		i = stoi(argv[2]);
+		j = stoi(argv[3]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	if (i < 0 || i >= CiNum) {
+		Abc_Print(-1, "i exceeds range.\n");
+		return 1;
+	}
+	if (j < 0 || j >= CiNum) {
+		Abc_Print(-1, "j exceeds range.\n");
+		return 1;
+	}
+	if (i == j) {
+		Abc_Print(-1, "i, j are the same.\n");
+		return 1;
+	}
+	
+	Lsv_NtkSymSat(pNtk, k, i, j);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_sat [-h]\n");
+	Abc_Print(-2, "\t        check if i j symmetric to k with sat\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int c;
+	int k;
+	int CoNum = Abc_NtkCoNum(pNtk);
+	Extra_UtilGetoptReset();
+	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+		switch (c) {
+			case 'h':
+				goto usage;
+			default:
+				goto usage;
+		}
+	}
+	if (!pNtk) {
+		Abc_Print(-1, "Empty network.\n");
+		return 1;
+	}
+	if (!Abc_NtkIsStrash(pNtk)) {
+		Abc_Print(-1, "Network is not logic AIG networks (run \"strash\").\n");
+		return 1;
+	}
+	if (argc != 2) {
+		Abc_Print(-1, "Wrong input!!!\n");
+		return 1;
+	}
+	try {
+		k = stoi(argv[1]);
+	}
+	catch (const std::exception& e) {
+		Abc_Print(-1, "Connot convert to int !!!\n");
+		return 1;
+	}
+	if (k < 0 || k >= CoNum) {
+		Abc_Print(-1, "k exceeds range.\n");
+		return 1;
+	}
+	
+	Lsv_NtkSymAll(pNtk, k);
+	return 0;
+
+usage:
+	Abc_Print(-2, "usage: lsv_sym_all [-h]\n");
+	Abc_Print(-2, "\t        find all i j symmetric pair to k with sat\n");
+	Abc_Print(-2, "\t-h    : print the command usage\n");
+	return 1;
+}
+
