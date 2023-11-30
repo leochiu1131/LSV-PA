@@ -1,0 +1,11 @@
+.model test
+.inputs x0 x1 x2
+.outputs y0
+
+.names x0 x1 x2 y0
+11- 1
+--1 1
+
+# 0 2 asymmetric
+# counter example: 100 001
+.end
