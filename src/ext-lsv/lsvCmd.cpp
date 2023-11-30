@@ -184,13 +184,83 @@ int Lsv_symmetric_bdd(Abc_Frame_t* pAbc, int argc, char** argv) {
         trans_j = x;
       }
     }
-    if(trans_i == -1){
-        cerr<<i<<"th variable is not "<<k<<"'s support, command fail."<<endl;
+    if(trans_i == -1 && trans_j == -1){
+        cerr<<"symmetric"<<endl;
         return 0;
     }
-    if(trans_j == -1){
-        cerr<<j<<"th variable is not "<<k<<"'s support, command fail."<<endl;
-        return 0;
+    else if(trans_i == -1){
+      cerr<<"asymmetric"<<endl;
+      DdNode* bdd_j = Cudd_Cofactor(dd, f, dd->vars[trans_j]);
+      DdNode* bdd_not_j = Cudd_Cofactor(dd, f, Cudd_Not( dd->vars[trans_j]));
+      DdNode* diff = Cudd_bddXor(dd, bdd_j, bdd_not_j);
+
+      int cex[Abc_NtkPiNum(pNtk)];
+      int** cube_cex = new(int*);
+      CUDD_VALUE_TYPE* type = new(CUDD_VALUE_TYPE);
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++)
+        cex[x] = 0;
+
+      Cudd_FirstCube(dd, diff, cube_cex, type);
+      Abc_ObjForEachFanin( pRoot, pPi, x){
+        //cout<<"id : "<<pPi->Id<<" "<<Abc_ObjName(pPi)<<" x : "<<x<<" cube "<<cube_cex[0][x]<<endl;
+        cex[pPi->Id - 1] = cube_cex[0][x];
+        if(cube_cex[0][x] == 2){
+          cex[pPi->Id - 1] = 1;
+        }
+      }
+      delete(cube_cex);
+      delete(type);
+      cex[i] = 1;
+      cex[j] = 0;
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++){
+        cout<<cex[x];
+      }
+      cout<<endl;
+
+      cex[i] = 0;
+      cex[j] = 1;
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++){
+        cout<<cex[x];
+      }
+      cout<<endl;
+      return 0;
+    }
+    else if(trans_j == -1){
+      cout<<"asymmetric"<<endl;
+      DdNode* bdd_i = Cudd_Cofactor(dd, f, dd->vars[trans_i]);
+      DdNode* bdd_not_i = Cudd_Cofactor(dd, f, Cudd_Not( dd->vars[trans_i]));
+      DdNode* diff = Cudd_bddXor(dd, bdd_i, bdd_not_i);
+
+      int cex[Abc_NtkPiNum(pNtk)];
+      int** cube_cex = new(int*);
+      CUDD_VALUE_TYPE* type = new(CUDD_VALUE_TYPE);
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++)
+        cex[x] = 0;
+
+      Cudd_FirstCube(dd, diff, cube_cex, type);
+      Abc_ObjForEachFanin( pRoot, pPi, x){
+        //cout<<"id : "<<pPi->Id<<" "<<Abc_ObjName(pPi)<<" x : "<<x<<" cube "<<cube_cex[0][x]<<endl;
+        cex[pPi->Id - 1] = cube_cex[0][x];
+        if(cube_cex[0][x] == 2){
+          cex[pPi->Id - 1] = 1;
+        }
+      }
+      delete(cube_cex);
+      delete(type);
+      cex[i] = 1;
+      cex[j] = 0;
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++){
+        cout<<cex[x];
+      }
+      cout<<endl;
+
+      cex[i] = 0;
+      cex[j] = 1;
+      for(x = 0; x < Abc_NtkPiNum(pNtk); x++){
+        cout<<cex[x];
+      }
+      cout<<endl;
+      return 0;
     }
 
     cube_i = Cudd_bddAnd( dd, Cudd_Not( dd->vars[trans_j] ), dd->vars[trans_i] );
@@ -252,7 +322,7 @@ int Lsv_symmetric_sat(Abc_Frame_t* pAbc, int argc, char** argv) {
     assert( Abc_NtkIsStrash(Abc_ObjFanin0(pPo)->pNtk) );
 
     //write circuit cnf to sat solver
-    Abc_Ntk_t* Ntk_k = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pPo), Abc_ObjName(pPo), 0);
+    Abc_Ntk_t* Ntk_k = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pPo), Abc_ObjName(pPo), 1);
     Aig_Man_t* aig_k = Abc_NtkToDar(Ntk_k, 0, 0);
     sat_solver * pSat = sat_solver_new();
     Cnf_Dat_t * pCnf = Cnf_Derive(aig_k, Aig_ManCoNum(aig_k));
@@ -291,14 +361,6 @@ int Lsv_symmetric_sat(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
 
     //check whether assigned input is support of assigned output
-    if(Var_i[0] == -1){
-        cerr<<i<<"th variable is not "<<k<<"'s support, command fail."<<endl;
-        return 0;
-    }
-    if(Var_j[0] == -1){
-        cerr<<j<<"th variable is not "<<k<<"'s support, command fail."<<endl;
-        return 0;
-    }
 
     //assume output xor
     Lit[0] = Abc_Var2Lit(pCnf->pVarNums[Abc_ObjFanin0(Abc_NtkPo(Ntk_k, 0))->Id], 0);
@@ -359,7 +421,7 @@ int Lsv_symmetric_all(Abc_Frame_t* pAbc, int argc, char** argv) {
     assert( Abc_NtkIsStrash(Abc_ObjFanin0(pPo)->pNtk) );
 
     //write circuit cnf to sat solver
-    Abc_Ntk_t* Ntk_k = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pPo), Abc_ObjName(pPo), 0);
+    Abc_Ntk_t* Ntk_k = Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pPo), Abc_ObjName(pPo), 1);
     Aig_Man_t* aig_k = Abc_NtkToDar(Ntk_k, 0, 0);
     sat_solver * pSat = sat_solver_new();
     Cnf_Dat_t * pCnf = Cnf_Derive(aig_k, Aig_ManCoNum(aig_k));
