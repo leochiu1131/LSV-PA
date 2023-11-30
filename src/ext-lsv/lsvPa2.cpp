@@ -245,6 +245,9 @@ usage:
  *      Aig_ManInterFast()
  * **/
 void Lsv_AigSymmetry ( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
+
+    assert( Abc_NtkIsStrash( pNtk ));
+
     // trivial case: i1 = i2
     if (i1 == i2) {
         std::cout << "symmetric" << std::endl;
@@ -267,8 +270,6 @@ void Lsv_AigSymmetry ( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
 
     int pI1_id = pi1->Id;
     int pI2_id = pi2->Id;
-
-    assert( Abc_NtkIsStrash( pNtk ));
 
     // Create Cone
     Abc_Ntk_t * Cone = Abc_NtkCreateCone( pNtk, pNode, pOName, 1);
@@ -468,6 +469,258 @@ int Lsv_CommandSymSat(Abc_Frame_t* pAbc, int argc, char** argv) {
 usage:
     Abc_Print(-2, "usage: lsv_sym_sat <pO> <pI1> <pI2> [-h]\n");
     Abc_Print(-2, "\t        Check symmetry on 2 variables in aig\n");
+    Abc_Print(-2, "\t-h    : print the command usage\n");
+    return 1;
+}
+
+/**
+ * lsv_sym_all <i>
+*/
+void Lsv_AigAllSymmetry ( Abc_Ntk_t * pNtk , int o) {
+    assert( Abc_NtkIsStrash( pNtk ));
+
+    int n = Abc_NtkCiNum( pNtk ) ;
+    Abc_Obj_t * pObj;
+    int Lits[100], i;
+
+    Abc_Obj_t * pO = Abc_NtkPo( pNtk, o );
+    Abc_Obj_t * pNode = Abc_ObjFanin0(pO);
+    assert( pNode );
+    assert( Abc_ObjIsNode(pNode) );
+    char * pOName = Abc_ObjName(pO);
+
+    // Create Cone
+    Abc_Ntk_t * Cone = Abc_NtkCreateCone( pNtk, pNode, pOName, 1);
+    // pRoot is the po in Cone, which is slightly different from pNode from pNtk.
+    Abc_Obj_t * pRoot = Abc_ObjFanin0( Abc_NtkPo(Cone, 0) ); 
+    
+    // NtkToDar
+    Aig_Man_t * aigMan = Abc_NtkToDar( Cone, 0, 0 );
+
+    // New Sat solver
+    sat_solver * pSat = sat_solver_new(); // SAT Solver
+    // pSat->fPrintClause = 1; // verbose
+
+    // Add CNF into SAT solver
+    Cnf_Dat_t * pCnf1 = Cnf_Derive( aigMan, Aig_ManCoNum(aigMan)); // CoNum should be 1
+    pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf1, 1, 0 );
+
+    // Create another CNF that depend on different input variable
+    Cnf_Dat_t * pCnf2 = Cnf_Derive( aigMan, Aig_ManCoNum(aigMan)); // CoNum should be 1
+    Cnf_DataLift( pCnf2, pCnf1->nVars + 1 );
+    pSat = (sat_solver *)Cnf_DataWriteIntoSolverInt( pSat, pCnf2, 1, 0 );
+
+
+// Below Part is different from Lsv_sym_aig()
+
+    // Map constraints
+    // add n-input vH(t) variables
+    int assumptionOffset = pSat->size;
+    sat_solver_setnvars( pSat, assumptionOffset + n );
+
+    // (b)
+    // printf("(b)\n");
+    // Aig_ManForEachCi( aigMan, pObj, i )
+    Abc_NtkForEachPi( Cone, pObj, i)
+    {
+
+        Lits[0] = toLitCond( pCnf1->pVarNums[pObj->Id], 0 );
+        Lits[1] = toLitCond( pCnf2->pVarNums[pObj->Id], 1 );
+        Lits[2] = toLitCond( assumptionOffset + i,  0 );
+        if ( !sat_solver_addclause( pSat, Lits, Lits+3 ) )
+            assert( 0 );
+        Lits[0] = toLitCond( pCnf1->pVarNums[pObj->Id], 1 );
+        Lits[1] = toLitCond( pCnf2->pVarNums[pObj->Id], 0 );
+        Lits[2] = toLitCond( assumptionOffset + i,  0 );
+        if ( !sat_solver_addclause( pSat, Lits, Lits+3 ) )
+            assert( 0 );
+    }
+
+    // (c) (d)
+    // printf("(c)(d)\n");
+    Abc_Obj_t * pObj1, * pObj2;
+    Abc_NtkForEachPi( Cone, pObj1, i )
+    {
+        int j;
+        Abc_NtkForEachPi( Cone, pObj2, j )
+        {
+            if ( j >= i ) continue;
+            
+            // (c)
+            // printf("(c)\n");
+            Lits[0] = toLitCond( pCnf1->pVarNums[pObj1->Id], 0 );
+            Lits[1] = toLitCond( pCnf2->pVarNums[pObj2->Id], 1 );
+            Lits[2] = toLitCond( assumptionOffset + i,  1 );
+            Lits[3] = toLitCond( assumptionOffset + j,  1 );
+            if ( !sat_solver_addclause( pSat, Lits, Lits+4 ) )
+                assert( 0 );
+            Lits[0] = toLitCond( pCnf1->pVarNums[pObj1->Id], 1 );
+            Lits[1] = toLitCond( pCnf2->pVarNums[pObj2->Id], 0 );
+            Lits[2] = toLitCond( assumptionOffset + i,  1 );
+            Lits[3] = toLitCond( assumptionOffset + j,  1 );
+            if ( !sat_solver_addclause( pSat, Lits, Lits+4 ) )
+                assert( 0 );
+
+            // (d)
+            // printf("(d)\n");
+            Lits[0] = toLitCond( pCnf1->pVarNums[pObj2->Id], 0 );
+            Lits[1] = toLitCond( pCnf2->pVarNums[pObj1->Id], 1 );
+            Lits[2] = toLitCond( assumptionOffset + i,  1 );
+            Lits[3] = toLitCond( assumptionOffset + j,  1 );
+            if ( !sat_solver_addclause( pSat, Lits, Lits+4 ) )
+                assert( 0 );
+            Lits[0] = toLitCond( pCnf1->pVarNums[pObj2->Id], 1 );
+            Lits[1] = toLitCond( pCnf2->pVarNums[pObj1->Id], 0 );
+            Lits[2] = toLitCond( assumptionOffset + i,  1 );
+            Lits[3] = toLitCond( assumptionOffset + j,  1 );
+            if ( !sat_solver_addclause( pSat, Lits, Lits+4 ) )
+                assert( 0 );
+        }
+    }
+
+
+
+    // XOR output // (a) vA(yk) XOR vB(yk)
+    Lits[0] = toLitCond( pCnf1->pVarNums[pRoot->Id], 0 );
+    Lits[1] = toLitCond( pCnf2->pVarNums[pRoot->Id], 0 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+        assert( 0 );
+    Lits[0] = toLitCond( pCnf1->pVarNums[pRoot->Id], 1 );
+    Lits[1] = toLitCond( pCnf2->pVarNums[pRoot->Id], 1 );
+    if ( !sat_solver_addclause( pSat, Lits, Lits+2 ) )
+        assert( 0 );
+
+    // Assertion should be put in sat_solver_solve( ., Lit* start, Lit* end, ...)
+    // Lits[0] = toLitCond( pCnf1->pVarNums[], 0 );
+    // Lits[1] = toLitCond( pCnf2->pVarNums[pI2_id], 0 );
+    // Lits[2] = toLitCond( pCnf1->pVarNums[pI1_id], 0 );
+    // Lits[3] = toLitCond( pCnf2->pVarNums[pI2_id], 0 );
+
+    // Below is the part to iterate all is and js
+    int j;
+    // i = 0;
+    // j = 2;
+
+    // std::cout << std::endl;
+    // std::cout << "Start!" << std::endl;
+    for (int k=0; k<n; ++k) { // initialize
+        Lits[k] = Abc_Var2Lit( assumptionOffset + k, 1);
+    }
+
+    Abc_NtkForEachPi( Cone, pObj1, i ) {
+        Abc_NtkForEachPi( Cone, pObj2, j) {
+            if (i >= j) continue;
+            // for (int k=0; k<n; ++k) {
+            //     Lits[k] = Abc_Var2Lit( assumptionOffset + k, (k == i || k == j)?0:1);
+            // }
+            Lits[i] = Abc_Var2Lit(assumptionOffset+i, 0);
+            Lits[j] = Abc_Var2Lit(assumptionOffset+j, 0);
+
+            // Solve
+            int status;
+            status = sat_solver_solve( pSat, Lits, Lits+n, (ABC_INT64_T)1000000, (ABC_INT64_T)0, (ABC_INT64_T)0, (ABC_INT64_T)0 );
+            if ( status == l_False )
+            {
+                std::cout << i << " " << j << std::endl;
+                // printf( "symmetric\n" );
+            }
+            else if ( status == l_True )
+            {
+                // std::cout << i << " " << j << std::endl;
+                // printf( "asymmetric\n" );
+
+                // // derive asymmetric counterexample
+                // int temp;
+                // Abc_NtkForEachPi( pNtk, pObj, temp )
+                // {
+                //     std::cout << sat_solver_var_value( pSat, (pCnf1->pVarNums[pObj->Id]) );
+                // }
+                // std::cout << std::endl;
+
+                // Abc_NtkForEachPi( pNtk, pObj, temp )
+                // {
+                //     std::cout << sat_solver_var_value( pSat, pCnf2->pVarNums[pObj->Id] );
+                // }
+                // std::cout << std::endl;
+            }
+            else
+            {
+                printf( "undef\n" );
+            }
+
+            Lits[i] = Abc_Var2Lit(assumptionOffset+i, 1);
+            Lits[j] = Abc_Var2Lit(assumptionOffset+j, 1);
+        }
+    }
+
+
+
+    sat_solver_delete( pSat );
+    Aig_ManStop( aigMan );
+    Cnf_DataFree( pCnf1 );
+    Cnf_DataFree( pCnf2 );
+    Abc_NtkDelete( Cone );
+    return;
+}
+
+int Lsv_CommandSymAll(Abc_Frame_t* pAbc, int argc, char** argv) {
+     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!pNtk) {
+        Abc_Print(-1, "Empty network.\n");
+        return 1;
+    }
+
+    int c;
+    Extra_UtilGetoptReset();
+
+    std::string simS;
+    int po;
+
+    while ( ( c = Extra_UtilGetopt(argc, argv, "h" ) ) != EOF ) {
+        switch (c) {
+            case 'h':
+                goto usage;
+            default:
+                break;
+        }
+    }
+
+    // get input string
+    char ** pArgvNew;
+    char * vString;
+    int nArgcNew;
+    pArgvNew = argv + globalUtilOptind;
+    nArgcNew = argc - globalUtilOptind;
+    if ( nArgcNew != 1 ) {
+        goto usage;
+    }
+
+    vString = pArgvNew[0];
+    simS = std::string(vString);
+    po = std::stoi(simS);
+
+    // std::cout << po << " " << pi1 << " " << pi2 << " " << std::endl;
+
+    if ( !Abc_NtkIsStrash(pNtk) )
+    {
+        Abc_Print( -1, "Simulating SAT can only be done for logic AIG networks (run \"strash\").\n" );
+        return 1;
+    }
+
+    // Size Check
+    if ( po >= Abc_NtkPoNum(pNtk) || po < 0 )
+    {
+        Abc_Print( -1, "pO index out of bound.\n" );
+        return 1;
+    }
+
+    Lsv_AigAllSymmetry( pNtk , po );
+    
+    return 0;
+
+usage:
+    Abc_Print(-2, "usage: lsv_sym_all <pO> [-h]\n");
+    Abc_Print(-2, "\t        Check symmetry on <pO> output in aig\n");
     Abc_Print(-2, "\t-h    : print the command usage\n");
     return 1;
 }
