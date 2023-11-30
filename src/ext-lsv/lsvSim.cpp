@@ -14,6 +14,9 @@ void Lsv_SimBDD(Abc_Ntk_t* pNtk, char* pInput) {
     char *name;
   };
   inseq inarr[Abc_NtkPiNum(pNtk)];
+	// Abc_NtkForEachObj(pNtk, pObj, ithPo){
+		// printf("%d: %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+	// }
   for(ithFI = 0; ithFI<Abc_NtkPiNum(pNtk); ithFI++){
     if (pInput[ithFI] == '\0') {
       Abc_Print(-1, "Wrong input length.\n");
