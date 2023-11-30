@@ -101,9 +101,39 @@ $v_A(y_k)$ and $v_B(y_k)$ are the CNF variables in $C_A$ and $C_A$ that correspo
        Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
    }
    ```
-3. The variable orders in CNF differ from the ones in AIG. For a pointer `pObj` in `Abc_Obj_t*` type, you can use `pCnf->pVarNums[pObj->ID]` to find its variable index in `pCnf`.
+3. The variable orders in CNF differ from the ones in AIG. For a pointer `pObj` in `Aig_Obj_t*` type, you can use `pCnf->pVarNums[pObj->ID]` to find its variable index in `pCnf`. If the pointer `pObj` is from the original network in `Abc_Obj_t*` type, to make it have the same ID as its counterpart in AIG, make sure you set the last parameter of `Abc_NtkCreateCone` to 1 in step (1), so that all input variables are always included.
 4. You can refer to our [GitHub page](https://github.com/NTU-ALComLab/LSV-PA/wiki/Reasoning-with-SAT-solvers) for more details about using SAT solvers in ABC.
 
 
+### 3. [Symmetry Checking with Incremental SAT] (Bonus 20%)
+Repeat Exercise 2, but this time, only $k$ is given, and you are asked to find out all $(i, j)$ pairs ($i$ < $j$) to make the output pin $y_k$ symmetric in $x_i$ and $x_j$. Your procedure should implement the command in the following format.
+```
+lsv_sym_all <k>
+```
+For the output format, list each $(i, j)$ pair in a line. For example, suppose the logic network has only one output pin, which represents the function $y_0 =
+x_0x_1x_2 + x_3x_4$. The command and the output should look like:
+```
+abc 01> lsv_sym_all 0
+0 1
+0 2
+1 2
+3 4
+```
+You must use incremental SAT to solve this problem. We will prepare larger benchmarks to test your program, so just calling the function in Exercise 2 iteratively will not be fast enough. We have released a benchmark "demo.blif" at NTU Cool. As an example, your program should be able to finish $k = 50$
+for this benchmark in 90 seconds.
 
 
+***Hint.***
+1. Note that symmetry satisfies transitivity. In other words, given that $y_k$ is symmetric in $(x_i, x_j)$ and $(x_j, x_k)$, then $y_k$ is also symmetric in $(x_i, x_k)$.
+2. For incremental SAT solver, you can follow steps (1) to (6) in Exercise 2 to build up an SAT solver. Next, add the following constraints into the solver, where $m$ is the number of input variables of the circuit.
+    1. $v_A(y_k) ⊕ v_B(y_k)$
+    2. $(v_A(t) = v_B(t)) ∨ v_H(t)$,                     for all $0 ≤ t < m$
+    3. $(v_A(t_1) = v_B(t_2)) ∨ ¬v_H(t_1) ∨ ¬v_H(t_2)$ , for all $0 ≤ t_1 < t_2 < m$
+    4. $(v_A(t_2) = v_B(t_1)) ∨ ¬v_H(t_1) ∨ ¬v_H(t_2)$ , for all $0 ≤ t_1 < t_2 < m$
+       
+   There are $m$ control variables $v_H(0)$ to $v_H(m − 1)$, which are used to enable or disable clauses in (b) to (d). When checking symmetry between $x_i$ and $x_j$, we set $v_H(i) = v_H(j) = 1$ and others to 0. These unit assumptions can be taken by `sat_solver_solve` when solving the problem. Then some constraints will be automatically satisfied (disabled). You can find that the enabled constraints are as follows.
+    1. Constraints in (1.) are always enabled.
+    2. Constraints in (2.) that are not related to $i$ and $j$ are enabled, indicating that variables other than $x_i$ and $x_j$ should be the same between $C_A$ and $C_B$.
+    3. Constraints in (3.) and (4.) that are related to $i$ or $j$ are enabled, indicating that variables $x_i$ and $x_j$ should swap their values between $C_A$ and $C_B$.
+
+   Therefore, the enabled clauses are exactly the same as in Exercise 2.
