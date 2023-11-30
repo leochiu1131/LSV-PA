@@ -207,3 +207,6 @@ Temporary Items
 
 # Local History for Visual Studio Code
 .history/
+
+# large file 
+/lsv/pa2/demo.blif
