@@ -46,7 +46,7 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
 
     Abc_Obj_t * pObj;
     pObj = Abc_ObjChild0(pPo); // Last bdd Node
-    char** piNames = (char**) Abc_NodeGetFaninNames(pObj)->pArray;
+    // char** piNames = (char**) Abc_NodeGetFaninNames(pObj)->pArray;
     
     assert( Abc_NtkIsBddLogic(pObj->pNtk) );
 
@@ -118,7 +118,7 @@ void Lsv_BddSymmetry( Abc_Ntk_t * pNtk , int o, int i1, int i2 ) {
 
     int bddIndex1 = -1, bddIndex2 = -1;
 
-    Abc_Obj_t * temp;
+    // Abc_Obj_t * temp;
     int i=0;
     bool ok1 = false, ok2 = false;
     int faninId;
