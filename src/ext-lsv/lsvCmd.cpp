@@ -446,6 +446,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
     // Reference: cudd_firstCube 
     // http://eddiehung.github.io/dox-abc/de/dc1/cudd_8h.html#a139d8dd64955ecf3e2fd4c5d6ceeebb4
     int counter_example[Abc_NtkPiNum(pNtk)];
+    for(int _i=0; _i<Abc_NtkPiNum(pNtk); _i++) counter_example[_i] = 0;
     int** cube = new(int*);
     CUDD_VALUE_TYPE* value = new(CUDD_VALUE_TYPE);
 
@@ -453,7 +454,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
     // For cube:
     // 0: complemented literal, 1: uncomplemented literal, 2:r don't care. 
 
-    // for(int _i=0; _i< dd->size; _i++) printf("%i ", cube[0][_i]);
+    // for(int _i=0; _i< Abc_NtkPiNum(pNtk); _i++) printf("%i ", cube[0][_i]);
     // printf("\n");
     
     Abc_ObjForEachFanin( pRoot, pObj, i_Pi){
@@ -461,6 +462,7 @@ int Lsv_CommandSymBdd(Abc_Frame_t* pAbc, int argc, char** argv) {
           counter_example[pObj->Id-1] = 1;
         }else{
           counter_example[pObj->Id-1] = cube[0][i_Pi];
+          // printf("cube[0][i_Pi]: %i", cube[0][i_Pi]);
         }
       }
     
