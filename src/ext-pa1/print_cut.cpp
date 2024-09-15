@@ -89,7 +89,28 @@ vector<set<Abc_Obj_t*>> k_feasible_cut(Abc_Obj_t* pObj, int cut_size)
                 cur_cut.push_back(temp);
         }
     }
-    sort(cur_cut.begin(),cur_cut.end(),[](set<Abc_Obj_t*> a, set<Abc_Obj_t*> b){return a.size() < b.size();});
+    sort(cur_cut.begin(),cur_cut.end(),[](set<Abc_Obj_t*> a, set<Abc_Obj_t*> b)
+    {
+        if(a.size() < b.size())
+            return 1;
+        if(a.size() == b.size())
+        {
+            auto ita = a.begin();
+            auto itb = b.begin();
+            while(ita != a.end())
+            {
+                if(*ita < *itb)
+                    return 1;
+                if(*ita > *itb)
+                    return 0;
+                ita++;
+                itb++;
+            }
+        }
+        return 0;
+    });
+    //remove the same set 
+    cur_cut.erase(unique(cur_cut.begin(),cur_cut.end()),cur_cut.end());
     for(int i = 0 ; i < cur_cut.size(); i++)
     {
         if(cur_cut[i].size() > cut_size)
@@ -141,6 +162,7 @@ void printcut(Abc_Ntk_t* pNtK, int cut_size)
             cout<<endl;
         }
     }
+    cut_list.clear();
 }
 
 
@@ -183,7 +205,11 @@ int Lsv_printcut(Abc_Frame_t* pAbc, int argc, char** argv)
             return 1;
         }
     }
-
+    if ( !Abc_NtkIsStrash(pNtk) )
+    {
+        Abc_Print( -1, "Cut computation is available only for AIGs (run \"strash\").\n" );
+        return 1;
+    }
     size = stoi(argv[1]);
     
     
