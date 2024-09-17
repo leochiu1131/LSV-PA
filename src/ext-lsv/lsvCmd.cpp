@@ -3,6 +3,7 @@
 #include "base/main/mainInt.h"
 #include <set>
 #include <vector>
+#include <iostream>
 
 using namespace std;
 
@@ -38,10 +39,54 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
     }
   }
 }
-void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
-    printf("k = %d\n", k);
 
-    vector<set<set<int> > > vSet( Abc_NtkNumObj);
+void printCut( const set<int> &cut )
+{
+    for ( auto it : cut )
+        cout << it << " ";
+}
+void printCuts( int id, set<set<int> > &cuts )
+{
+    for ( auto &it : cuts )
+    {
+        cout << id << ": ";
+        printCut(it);
+        cout << endl;
+    }
+}
+
+void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
+
+    Abc_Obj_t * pObj;
+    int i, id0, id1;
+
+    vector<set<set<int> > > vCuts;
+    vCuts.resize(Abc_NtkObjNum(pNtk));
+
+    Abc_NtkForEachObj(pNtk, pObj, i)
+    {
+        vCuts[i].insert({i});
+        if ( Abc_ObjIsCi(pObj) ) continue;
+        if ( Abc_ObjIsCo(pObj) ) continue;
+        if ( Abc_ObjFaninNum(pObj) < 2 ) continue;
+
+        id0 = Abc_ObjFaninId0(pObj);
+        id1 = Abc_ObjFaninId1(pObj);
+
+        for( auto &cut0 : vCuts[id0] )
+        {
+            for( auto &cut1 : vCuts[id1] )
+            {
+                set<int> tmp;
+                for ( auto id : cut0 ) tmp.insert(id);
+                for ( auto id : cut1 ) tmp.insert(id);
+
+                if ( tmp.size() <= k ) vCuts[i].insert(tmp);
+            }
+        }
+    }
+    Abc_NtkForEachObj(pNtk, pObj, i)
+        printCuts( i, vCuts[i] );
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
