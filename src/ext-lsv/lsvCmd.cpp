@@ -33,11 +33,10 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
 		Abc_Obj_t* pFanin;
 		int j;
 		Abc_ObjForEachFanin(pObj, pFanin, j) {
-		printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-				Abc_ObjName(pFanin));
+			printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
 		}
 		if (Abc_NtkHasSop(pNtk)) {
-		printf("The SOP of this node:\n%s", (char*)pObj->pData);
+			printf("The SOP of this node:\n%s", (char*)pObj->pData);
 		}
 	}
 }
@@ -84,15 +83,25 @@ void RecursiveProcess(Abc_Obj_t* pNode, int k) {
 		return;
     }
 
-    // Get children of the current node
+    // // Get children of the current node
     Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pNode);
     Abc_Obj_t* pFanin1 = Abc_ObjFanin1(pNode);
 
-    // Recursive calls to process children
+    // // Recursive calls to process children
 	RecursiveProcess(pFanin0, k);
 	RecursiveProcess(pFanin1, k);
 	CutSet* fanin0Cuts = static_cast<CutSet*>(pFanin0->pData);
 	CutSet* fanin1Cuts = static_cast<CutSet*>(pFanin1->pData);
+
+	// Abc_Obj_t* pFanin0 = (Abc_ObjFaninNum(pNode) > 0) ? Abc_ObjFanin0(pNode) : nullptr;
+	// Abc_Obj_t* pFanin1 = (Abc_ObjFaninNum(pNode) > 1) ? Abc_ObjFanin1(pNode) : nullptr;
+
+	// if (pFanin0 != nullptr) RecursiveProcess(pFanin0, k);
+	// if (pFanin1 != nullptr) RecursiveProcess(pFanin1, k);
+
+	// CutSet* fanin0Cuts = (pFanin0 != nullptr) ? static_cast<CutSet*>(pFanin0->pData) : nullptr;
+	// CutSet* fanin1Cuts = (pFanin1 != nullptr) ? static_cast<CutSet*>(pFanin1->pData) : static_cast<CutSet*>(pFanin0->pData);
+
 
 	// Combine cuts from both fanins
     for (const auto& cut0 : *fanin0Cuts) {
@@ -118,14 +127,21 @@ bool compareBySize(const set<int>& a, const set<int>& b) {
 void Print_AllCut(Abc_Obj_t* pNode) {
 	CutSet* cuts = static_cast<CutSet*>(pNode->pData);
 
-	sort(cuts->begin(), cuts->end(), compareBySize);
+	if (cuts != nullptr) {
+		sort(cuts->begin(), cuts->end(), compareBySize);
 
-	// Print the k-feasible cuts
-	for (const auto& cut : *cuts) {
-		Abc_Print(1, "%d: ", Abc_ObjId(pNode));
-		for (const auto& fanin : cut) {
-			Abc_Print(1, "%d ", fanin);
+		// Print the k-feasible cuts
+		for (const auto& cut : *cuts) {
+			Abc_Print(1, "%d: ", Abc_ObjId(pNode));
+			for (const auto& fanin : cut) {
+				Abc_Print(1, "%d ", fanin);
+			}
+			Abc_Print(1, "\n");
 		}
+	}
+	else {
+		Abc_Print(1, "%d: ", Abc_ObjId(pNode));
+		Abc_Print(1, "%d", Abc_ObjId(pNode));
 		Abc_Print(1, "\n");
 	}
 }
@@ -136,15 +152,30 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int k) {
 
     // Iterate over each primary output (PO) in the network
     Abc_NtkForEachPo(pNtk, pObj, i) {
+		CutSet* cuts = new CutSet;
         RecursiveProcess(Abc_ObjFanin0(pObj), k);
+		CutSet* FaninCuts = static_cast<CutSet*>(Abc_ObjFanin0(pObj)->pData);
+		for (const auto& cut : *FaninCuts) {
+			cuts->push_back(cut);
+		}
+		set<int> PoCut;
+        PoCut.insert(Abc_ObjId(pObj));
+		cuts->push_back(PoCut);
+		pObj->pData = cuts;
     }
 
 	Abc_NtkForEachPi(pNtk, pObj, i) {
 		Print_AllCut(pObj);
 	}
+	Abc_NtkForEachPo(pNtk, pObj, i) {
+		Print_AllCut(pObj);
+	}
 	Abc_NtkForEachNode(pNtk, pObj, i) {
 		Print_AllCut(pObj);
 	}
+	// Abc_NtkForEachObj(pNtk, pObj, i) {
+	// 	Print_AllCut(pObj);
+	// }
 
 	// Reset pData for all nodes in the network
     Abc_NtkForEachObj(pNtk, pObj, i) {
@@ -161,16 +192,16 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 	if (argc == 2) {
 		if (strcmp(argv[1], "-h") == 0) {
-		goto usage;
+			goto usage;
 		}
 		k = atoi(argv[1]);
 		if (k < 3 || k > 6) {
-		Abc_Print(-1, "k must be between 3 and 6.\n");
-		goto usage;
+			Abc_Print(-1, "k must be between 3 and 6.\n");
+			goto usage;
 		}
 		if (!pNtk) {
-		Abc_Print(-1, "Empty network.\n");
-		return 1;
+			Abc_Print(-1, "Empty network.\n");
+			return 1;
 		}
 		Lsv_NtkPrintCut(pNtk, k);
 		return 0;
