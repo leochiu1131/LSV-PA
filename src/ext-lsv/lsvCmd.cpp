@@ -4,6 +4,7 @@
 #include <set>
 #include <vector>
 #include <iostream>
+#include <algorithm>
 
 using namespace std;
 
@@ -40,12 +41,11 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
   }
 }
 
-void printCut( const set<int> &cut )
+inline void printCut( const set<int> &cut )
 {
-    for ( auto it : cut )
-        cout << it << " ";
+    for ( auto it : cut ) cout << it << " ";
 }
-void printCuts( int id, set<set<int> > &cuts )
+inline void printCuts( int id, set<set<int> > &cuts )
 {
     for ( auto &it : cuts )
     {
@@ -59,16 +59,17 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
 
     Abc_Obj_t * pObj;
     int i, id0, id1;
+    bool insert;
 
     vector<set<set<int> > > vCuts;
+    vector<set<int> > vRemove;
     vCuts.resize(Abc_NtkObjNum(pNtk));
 
     Abc_NtkForEachObj(pNtk, pObj, i)
     {
+        if ( Abc_ObjId(pObj) == 0 ) continue; 
         vCuts[i].insert({i});
-        if ( Abc_ObjIsCi(pObj) ) continue;
-        if ( Abc_ObjIsCo(pObj) ) continue;
-        if ( Abc_ObjFaninNum(pObj) < 2 ) continue;
+        if ( Abc_ObjFaninNum(pObj) < 2 ) continue; 
 
         id0 = Abc_ObjFaninId0(pObj);
         id1 = Abc_ObjFaninId1(pObj);
@@ -81,12 +82,45 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
                 for ( auto id : cut0 ) tmp.insert(id);
                 for ( auto id : cut1 ) tmp.insert(id);
 
-                if ( tmp.size() <= k ) vCuts[i].insert(tmp);
+                if ( tmp.size() <= k ) 
+                {
+                    if ( vCuts[i].find(tmp) != vCuts[i].end() ) continue;
+                    insert = true;
+                    for( auto &cut : vCuts[i] )
+                    {
+                        if ( cut.size() < tmp.size() )
+                        {
+                            if ( insert && includes(tmp.begin(), tmp.end(), cut.begin(), cut.end()) )
+                                insert = false;
+                        }
+                        else if ( cut.size() > tmp.size() )
+                        {
+                            if ( includes(cut.begin(), cut.end(), tmp.begin(), tmp.end()) )
+                            {
+                                assert( insert == true );
+                                vRemove.push_back(cut);
+                            }
+                        }
+                    }
+                    for ( auto &cut : vRemove ) vCuts[i].erase(cut);
+                    vRemove.clear();
+
+                    if ( insert ) vCuts[i].insert(tmp);
+                }
             }
         }
     }
+    Abc_NtkForEachCo(pNtk, pObj, i)
+    {
+        id0 = Abc_ObjId(pObj);
+        vCuts[id0] = vCuts[Abc_ObjFaninId0(pObj)];
+        vCuts[id0].insert({id0});
+    }
     Abc_NtkForEachObj(pNtk, pObj, i)
+    {
+        if ( i == 0 ) continue;
         printCuts( i, vCuts[i] );
+    }
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
