@@ -75,32 +75,47 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
 
   std::unordered_map<int, std::vector<std::vector<int>>> node_cuts;
   std::unordered_map<int, std::unordered_set<int>> node_fanins;
+  std::unordered_map<int, int> node_fanin_count;
   // bottom up
   std::queue<int> Queue;
+  Abc_NtkForEachNode(pNtk, pObj, i) {
+    int fanin_count = Abc_ObjFaninNum(pObj);
+    int id = Abc_ObjId(pObj);
+    node_fanin_count[id] = fanin_count;
+  }
+
+  Abc_NtkForEachPo(pNtk, pObj, i) {
+    int fanin_count = Abc_ObjFaninNum(pObj);
+    int id = Abc_ObjId(pObj);
+    node_fanin_count[id] = fanin_count;
+  }
+
   Abc_NtkForEachPi( pNtk, pObj, i ){
     if ( Abc_ObjFanoutNum(pObj) > 0 ) {
       int id = Abc_ObjId(pObj);
       node_cuts[id].push_back(std::vector<int>{id});
       Queue.push(id);
-    }    
+    }
   }  
-  while(!Queue.empty()){
-    int level_size = Queue.size();
+  
+
+  while(!Queue.empty()){    
+    int node_id = Queue.front();
+    Queue.pop();
+
+    Abc_Obj_t* pObj = Abc_NtkObj(pNtk, node_id);
+    Abc_Obj_t* pFanout;
+    int i;
     std::unordered_set<int> next_level_nodes;
-    for(int i=0;i<level_size;i++){
-      int node_id = Queue.front();
-      Queue.pop();
-      Abc_Obj_t* pObj = Abc_NtkObj(pNtk, node_id);
-      Abc_Obj_t* pFanout;
-      int j;      
-      Abc_ObjForEachFanout(pObj, pFanout, j) {
-        int fanout_id = Abc_ObjId(pFanout);
-        if(next_level_nodes.find(fanout_id) == next_level_nodes.end()){
-          next_level_nodes.insert(fanout_id);
-          Queue.push(fanout_id);           
-        }                
-        node_fanins[fanout_id].insert(node_id);
-      }
+
+    Abc_ObjForEachFanout(pObj, pFanout, i) {
+      int fanout_id = Abc_ObjId(pFanout);
+      node_fanin_count[fanout_id]--;            
+      if(node_fanin_count[fanout_id] == 0){        
+        next_level_nodes.insert(fanout_id);
+        Queue.push(fanout_id);
+      }                 
+      node_fanins[fanout_id].insert(node_id);
     }
     
     // merge cuts from fanins
@@ -120,14 +135,12 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
       }else{
         node_cuts[node_id].push_back(std::vector<int>{node_id});
         for(const auto &cut1:node_cuts[fanin_id1]){
-          for(const auto &cut2:node_cuts[fanin_id2]){
-            int cut_size = cut1.size() + cut2.size();
-            if(cut_size > K){
-              continue;
-            }
+          for(const auto &cut2:node_cuts[fanin_id2]){            
             std::vector<int> merged_cut;
             std::set_union(cut1.begin(),cut1.end(),cut2.begin(),cut2.end(),std::back_inserter(merged_cut));            
-            node_cuts[node_id].push_back(merged_cut);
+            if(merged_cut.size() <= K){
+              node_cuts[node_id].push_back(merged_cut);
+            }
           }
         }                  
       }
