@@ -2,8 +2,8 @@
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 #include <cstdlib>
-#include <map>
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <queue>
@@ -73,20 +73,20 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
   Abc_Obj_t* pObj;  
   int i;
 
-  std::map<int, std::set<std::set<int>>> node_cuts;
+  std::unordered_map<int, std::vector<std::vector<int>>> node_cuts;
+  std::unordered_map<int, std::unordered_set<int>> node_fanins;
   // bottom up
   std::queue<int> Queue;
-  Abc_NtkForEachCi( pNtk, pObj, i ){
+  Abc_NtkForEachPi( pNtk, pObj, i ){
     if ( Abc_ObjFanoutNum(pObj) > 0 ) {
       int id = Abc_ObjId(pObj);
-      node_cuts[id].insert(std::set<int>{id});
+      node_cuts[id].push_back(std::vector<int>{id});
       Queue.push(id);
     }    
-  }
-  int level = 0;
+  }  
   while(!Queue.empty()){
     int level_size = Queue.size();
-    std::set<int> next_level_nodes;
+    std::unordered_set<int> next_level_nodes;
     for(int i=0;i<level_size;i++){
       int node_id = Queue.front();
       Queue.pop();
@@ -99,42 +99,38 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
           next_level_nodes.insert(fanout_id);
           Queue.push(fanout_id);           
         }                
+        node_fanins[fanout_id].insert(node_id);
       }
     }
-    level++;
+    
     // merge cuts from fanins
-    for(auto node_id:next_level_nodes){      
-      Abc_Obj_t* pObj = Abc_NtkObj(pNtk, node_id);
-      Abc_Obj_t* pFanin;
-      int j;
-      std::set<std::set<int>> cuts1,cuts2;
-      int fanin_count = 0;
-      Abc_ObjForEachFanin(pObj, pFanin, j) {
-        int fanin_id = Abc_ObjId(pFanin);        
-        if(fanin_count == 0){
-          cuts1 = node_cuts[fanin_id];
+    for(auto node_id : next_level_nodes){                        
+      int fanin_id1 = -1, fanin_id2 = -1;      
+      for(int fanin_id:node_fanins[node_id]){            
+        if(fanin_id1 == -1){
+          fanin_id1 = fanin_id;
         }else{ 
-          cuts2 = node_cuts[fanin_id];
+          fanin_id2 = fanin_id;
         }
-        fanin_count++;
       }
-      std::set<std::set<int>> merged_cuts;
-      merged_cuts.insert(std::set<int>{node_id});
 
-      if(fanin_count == 1){
-        merged_cuts.insert(cuts1.begin(),cuts1.end());
+      if(fanin_id2 == -1){
+        node_cuts[node_id] = node_cuts[fanin_id1];
+        node_cuts[node_id].push_back(std::vector<int>{node_id});
       }else{
-        for(auto cut1:cuts1){
-          for(auto cut2:cuts2){
-            std::vector<int> merged_cut;
-            std::set_union(cut1.begin(),cut1.end(),cut2.begin(),cut2.end(),std::back_inserter(merged_cut));
-            if(merged_cut.size() <= K){              
-              merged_cuts.insert(std::set<int>(merged_cut.begin(),merged_cut.end()));
+        node_cuts[node_id].push_back(std::vector<int>{node_id});
+        for(const auto &cut1:node_cuts[fanin_id1]){
+          for(const auto &cut2:node_cuts[fanin_id2]){
+            int cut_size = cut1.size() + cut2.size();
+            if(cut_size > K){
+              continue;
             }
+            std::vector<int> merged_cut;
+            std::set_union(cut1.begin(),cut1.end(),cut2.begin(),cut2.end(),std::back_inserter(merged_cut));            
+            node_cuts[node_id].push_back(merged_cut);
           }
-        }              
+        }                  
       }
-      node_cuts[node_id] = merged_cuts;
     }
   }
   
