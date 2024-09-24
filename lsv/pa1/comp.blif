@@ -1,7 +1,14 @@
 .model compressor
 .inputs x0 x1 x2 x3 x4
 .outputs y0 y1 y2
-.subckt add a0=x0 a1=x1 b0=y1 b1=y2
+.subckt add a0=x0 a1=x1 b0=carry1 b1=carry2
+.subckt add a0=x2 a1=x3 b0=carry3 b1=carry4
+.subckt add a0=carry2 a1=carry4 b0=carry5 b1=carry6
+.subckt add a0=carry1 a1=carry3 b0=carry7 b1=carry8
+.subckt add a0=carry5 a1=carry8 b0=carry9 b1=carry10
+.subckt add a0=carry7 a1=carry9 b0=carry11 b1=y0
+.subckt add a0=x4 a1=carry6 b0=carry13 b1=y2
+.subckt add a0=carry10 a1=carry13 b0=carry14 b1=y1
 
 .model add
 .inputs a0 a1
