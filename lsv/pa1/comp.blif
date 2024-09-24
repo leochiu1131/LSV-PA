@@ -1,1 +1,11 @@
+.model compressor
+.inputs x0 x1 x2 x3 x4
+.outputs y0 y1 y2
+.names
 
+.model and
+.inputs a1 a2
+.outputs out
+.names a1 a2 out
+11 1
+.end
