@@ -1,14 +1,14 @@
 .model compressor
 .inputs x0 x1 x2 x3 x4
 .outputs y0 y1 y2
-.subckt and a1=x0 a2=x1
+.subckt add a0=x0 a1=x1 b0=y1 b1=y2
 
 .model add
-.inputs a1 a2
-.outputs b1 b2
-.names a1 a2 b1
+.inputs a0 a1
+.outputs b0 b1
+.names a0 a1 b0
 11 1
-.names a1 a2 b2
+.names a0 a1 b1
 10 1
 01 1
 .end
