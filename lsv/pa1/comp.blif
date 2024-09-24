@@ -9,6 +9,7 @@
 .subckt add a0=carry7 a1=carry9 b0=carry11 b1=y0
 .subckt add a0=x4 a1=carry6 b0=carry13 b1=y2
 .subckt add a0=carry10 a1=carry13 b0=carry14 b1=y1
+.end
 
 .model add
 .inputs a0 a1
