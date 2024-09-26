@@ -9,6 +9,7 @@
 using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char *argv[]);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
@@ -32,8 +33,12 @@ class Cut {
     Cut() {}
     Cut(int leaf) : leaves{leaf} {}
 
-    bool operator<(const Cut& other) const {
+    bool operator<(const Cut &other) const {
       return leaves < other.leaves;
+    }
+
+    bool operator==(const Cut &other) const {
+        return leaves == other.leaves;
     }
 };
 
@@ -50,12 +55,15 @@ Cut merge(const Cut &cut1, const Cut &cut2, int k) {
 
   set_union(cut1.leaves.begin(), cut1.leaves.end(), cut2.leaves.begin(), cut2.leaves.end(), back_inserter(result.leaves));
 
-  if(result.leaves.size() > k) result.leaves.resize(k);
+  if(result.leaves.size() <= k) return result;
+  else return Cut(); // Return an empty cut if the size exceeds k
+
+  sort(result.leaves.begin(), result.leaves.end());
 
   return result;
 }
 
-vector<Cut> enumerate_cuts(Abc_Obj_t* pObj, int k) {
+vector<Cut> enumerate_cuts(Abc_Obj_t *pObj, int k) {
   vector<Cut> cuts;
   
   if(Abc_ObjIsCi(pObj)){
@@ -74,10 +82,9 @@ vector<Cut> enumerate_cuts(Abc_Obj_t* pObj, int k) {
     for (const auto& cut1 : cuts1) {
         Cut newCut = merge(cut0, cut1, k);
         
-        if (newCut.leaves.size() <= k) cuts.push_back(newCut);
+        if (!newCut.leaves.empty()) cuts.push_back(newCut);
     }
   }
-
   cuts.emplace_back(Abc_ObjId(pObj));
 
   sort(cuts.begin(), cuts.end());
@@ -88,12 +95,20 @@ vector<Cut> enumerate_cuts(Abc_Obj_t* pObj, int k) {
 
 
 
-void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int k) {
+void Lsv_NtkPrintCut(Abc_Ntk_t *pNtk, int k) {
   Abc_Obj_t *pObj;
   int i;
   
+  Abc_NtkForEachCi(pNtk, pObj, i) {
+    cout << Abc_ObjId(pObj) << ": " << Abc_ObjId(pObj) << endl;
+  }
+
   Abc_NtkForEachNode(pNtk, pObj, i) {
     vector<Cut> cuts = enumerate_cuts(pObj, k);
+    
+    sort(cuts.begin(), cuts.end(), 
+         [](const Cut& a, const Cut& b) { return a.leaves.size() < b.leaves.size(); });
+    
     for(const auto& cut : cuts) {
       cout << Abc_ObjId(pObj) << ": ";
       print_cut(cut);
@@ -101,8 +116,8 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int k) {
   }
 }
 
-int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
-  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+int Lsv_CommandPrintCut(Abc_Frame_t *pAbc, int argc, char *argv[]) {
+  Abc_Ntk_t *pNtk = Abc_FrameReadNtk(pAbc);
   int c, k = 0;
 
   Extra_UtilGetoptReset();

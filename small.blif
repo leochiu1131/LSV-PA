@@ -1,0 +1,12 @@
+.model test_circuit
+.inputs a b c
+.outputs o1 o2
+.names a b n1
+11 1
+.names n1 c o1
+11 1
+00 1
+.names a c o2
+10 1
+01 1
+.end
