@@ -1,0 +1,14 @@
+# xy AND yz boolean function
+.model xy_and_yz
+.inputs x y z
+.outputs out
+
+# xy term
+.names x y xy_term
+11 1
+
+# (xy) AND (yz) term
+.names xy_term y z out
+111 1
+
+.end
