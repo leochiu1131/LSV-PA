@@ -4,7 +4,8 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include <set>
+#include <unordered_set>
+#include <unordered_map>
 
 using namespace std;
 
@@ -44,11 +45,27 @@ class Cut {
 
 
 
-void print_cut(const Cut &cut) {
-  for(int leaf : cut.leaves) cout << leaf << " ";
+// Hash function for Cut
+struct CutHash {
+    size_t operator()(const Cut &cut) const {
+        size_t hash_value = 0;
+        for (int leaf : cut.leaves) {
+            hash_value ^= std::hash<int>{}(leaf) + 0x9e3779b9 + (hash_value << 6) + (hash_value >> 2);
+        }
+        return hash_value;
+    }
+};
 
-  cout << endl;
-}
+
+
+// Hash function for pair<Abc_Obj_t*, int>
+struct PairHash {
+    size_t operator()(const pair<Abc_Obj_t *, int> &p) const {
+        return std::hash<Abc_Obj_t *>()(p.first) ^ std::hash<int>()(p.second);
+    }
+};
+
+
 
 Cut merge(const Cut &cut1, const Cut &cut2, int k) {
   Cut result;
@@ -64,33 +81,39 @@ Cut merge(const Cut &cut1, const Cut &cut2, int k) {
 }
 
 vector<Cut> enumerate_cuts(Abc_Obj_t *pObj, int k) {
-  vector<Cut> cuts;
-  
-  if(Abc_ObjIsCi(pObj)){
-    cuts.push_back(Abc_ObjId(pObj));
-
-    return cuts;
-  }
-
-  Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pObj);
-  Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pObj);
-
-  vector<Cut> cuts0 = enumerate_cuts(pFanin0, k);
-  vector<Cut> cuts1 = enumerate_cuts(pFanin1, k);
-
-  for (const auto& cut0 : cuts0) {
-    for (const auto& cut1 : cuts1) {
-        Cut newCut = merge(cut0, cut1, k);
-        
-        if (!newCut.leaves.empty()) cuts.push_back(newCut);
+    static unordered_map<pair<Abc_Obj_t *, int>, vector<Cut>, PairHash> memo;
+    
+    auto key = make_pair(pObj, k);
+    if (memo.find(key) != memo.end()) return memo[key];
+    
+    vector<Cut> cuts;
+    unordered_set<Cut, CutHash> unique_cuts;
+    
+    if (Abc_ObjIsCi(pObj)) {
+        cuts.push_back(Cut(Abc_ObjId(pObj)));
+        memo[key] = cuts;
+        return cuts;
     }
-  }
-  cuts.emplace_back(Abc_ObjId(pObj));
-
-  sort(cuts.begin(), cuts.end());
-  cuts.erase(unique(cuts.begin(), cuts.end()), cuts.end());
-
-  return cuts;
+    
+    Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pObj);
+    Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pObj);
+    
+    vector<Cut> cuts0 = enumerate_cuts(pFanin0, k);
+    vector<Cut> cuts1 = enumerate_cuts(pFanin1, k);
+    
+    for (const auto& cut0 : cuts0) {
+        for (const auto& cut1 : cuts1) {
+            Cut newCut;
+            set_union(cut0.leaves.begin(), cut0.leaves.end(), cut1.leaves.begin(), cut1.leaves.end(), back_inserter(newCut.leaves));
+            
+            if (newCut.leaves.size() <= k && unique_cuts.insert(newCut).second) cuts.push_back(newCut);
+        }
+    }
+    
+    cuts.emplace_back(Abc_ObjId(pObj));
+    
+    memo[key] = cuts;
+    return cuts;
 }
 
 
@@ -99,19 +122,17 @@ void Lsv_NtkPrintCut(Abc_Ntk_t *pNtk, int k) {
   Abc_Obj_t *pObj;
   int i;
   
-  Abc_NtkForEachCi(pNtk, pObj, i) {
-    cout << Abc_ObjId(pObj) << ": " << Abc_ObjId(pObj) << endl;
-  }
+  Abc_NtkForEachCi(pNtk, pObj, i) cout << Abc_ObjId(pObj) << ": " << Abc_ObjId(pObj) << "\n";
 
   Abc_NtkForEachNode(pNtk, pObj, i) {
     vector<Cut> cuts = enumerate_cuts(pObj, k);
     
-    sort(cuts.begin(), cuts.end(), 
-         [](const Cut& a, const Cut& b) { return a.leaves.size() < b.leaves.size(); });
+    sort(cuts.begin(), cuts.end(), [](const Cut& a, const Cut& b) { return a.leaves.size() < b.leaves.size(); });
     
     for(const auto& cut : cuts) {
       cout << Abc_ObjId(pObj) << ": ";
-      print_cut(cut);
+      for(int leaf : cut.leaves) cout << leaf << " ";
+      cout << '\n';
     }
   }
 }
