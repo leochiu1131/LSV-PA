@@ -156,15 +156,12 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
           }
         }
         if(CutNodeNum <= CutNumMax){
-          int SameCutCheck = 0, k = 0, m = 0, CutCompareLarge = 1, CutCompareSmall = 1;
-
-          
-
+          int SameCutCheck = 0, k = 0, m = 0, CutCompareLarge = 0, CutCompareSmall = 0;
           for(j = 0; j < cut[Abc_ObjId(pObj)].size(); j++){
             k = 0;
             m = 0;
-            CutCompareLarge = 1;
-            CutCompareSmall = 1;
+            CutCompareLarge = 0;
+            CutCompareSmall = 0;
             if(j > 0){
               
               m = 0;
@@ -273,7 +270,6 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
         CutForm[j] = 0;
       }
       Abc_ObjForEachFanin(pObj, pFanin, j){
-        //printf("%d FaninCutNum:%d, Index: %d\n", Abc_ObjId(pFanin), FaninCutNum[j], j);
         for(k = 0; k < cut[Abc_ObjId(pFanin)][FaninCutNum[j]].size(); k++){
           CutForm[cut[Abc_ObjId(pFanin)][FaninCutNum[j]][k]] = 1;
         }         
@@ -281,7 +277,6 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
       CutNodeNum = 0;
       tempcut.clear();
       for(j = 0; j <= Abc_NtkObjNum(pNtk); j++){
-        //printf("j:%d %d\n", j, CutForm[j]);
         if(CutForm[j] == 1){
           CutNodeNum++;
           tempcut.push_back(j);
@@ -298,8 +293,8 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
         for(j = 0; j < cut[Abc_ObjId(pObj)].size(); j++){
           k = 0;
           m = 0;
-          CutCompareLarge = 1;
-          CutCompareSmall = 1;
+          CutCompareLarge = 0;
+          CutCompareSmall = 0;
           if(j > 0){
             m = 0;
             for(k = 0; k < tempcut.size(); k++){
