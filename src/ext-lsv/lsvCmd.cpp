@@ -197,7 +197,7 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk, int k)
     }
   }
 
-  cout << "total number of cuts under constraint k = " << k << ": " << count << endl;
+  // cout << "total number of cuts under constraint k = " << k << ": " << count << endl;
 }
 int Lsv_CommandPrintCut(Abc_Frame_t *pAbc, int argc, char **argv)
 {
