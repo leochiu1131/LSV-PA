@@ -3,7 +3,6 @@
 #include "base/main/mainInt.h"
 #include "aig/aig/aig.h"
 #include <iostream>
-#include <fstream>
 #include <map>
 #include <set>
 using namespace std;
@@ -107,26 +106,16 @@ void Lsv_aig(Abc_Ntk_t* pNtk, int k){
     hash_table[Abc_ObjId(pObj)] = result;
   }
   
-  // write output file
-  //string filename = to_string(k) + ".txt";
-  //ofstream outfile(filename); 
-  /*
+  
   for (const auto& [key, value] : hash_table) {
         for (const auto& inner_set : value) {
-            //cout << key << ": ";
-            //outfile << key << ": ";
+            cout << key << ": ";
             for (const auto& element : inner_set) {
-                //cout << element << " ";
-                //outfile << element << " ";
+                cout << element << " ";
             }
-            //cout << endl;
-            //outfile << endl;
+            cout << endl;
         }
-  }*/
-
-  int total_sets = countTotalSets(hash_table);
-    cout << "Total number of sets in hash_table: " << total_sets << endl;
-
+  }
 }
 
 // -------------------------------------------------- example ---------------------------------------------------------
