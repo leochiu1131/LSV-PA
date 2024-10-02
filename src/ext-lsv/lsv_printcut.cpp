@@ -116,14 +116,14 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
 
 
       list_index = 0;
-      for (const auto& list : current_list_array)
+      for ( auto& list : current_list_array)
       {
         node_index = 0;
         int list_size = list.size();
         node_array[list_index].resize(list_size);
-        for (const auto& node : list)
+        for ( auto& node : list)
         {
-          node_array[list_index][node_index] = const_cast<Abc_Obj_t*>(&node);
+          node_array[list_index][node_index] = (&node);
           total_node_number++;
           node_index++;
         }
@@ -146,25 +146,27 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
 
 
 
-
-      for (int list_iteration_index = 0; list_iteration_index < node_array.size(); list_iteration_index++)
+      int node_array_size = node_array.size();
+      for (int list_iteration_index = 0; list_iteration_index < node_array_size; list_iteration_index++)
       {
         const int node_number = list_node_number[list_iteration_index];
 
 
     
         #if DEBUG_MESG_ENABLE
-          printf("node_array size: %lu\n", node_array.size());
+        printf("======== node_array dump ============\n");
+          printf("||\tnode_array size: %lu\n", node_array.size());
           for (size_t idx = 0; idx < node_array.size(); ++idx)
           {
-            printf("node_array[%lu] size: %lu\n", idx, node_array[idx].size());
-            printf("node_array[%lu] content: ", idx);
+            printf("||\tnode_array[%lu] size: %lu\n", idx, node_array[idx].size());
+            printf("||\tnode_array[%lu] content: ", idx);
             for (auto node : node_array[idx])
             {
               printf("%d ", Abc_ObjId(node));
             }
             printf("\n");
           }
+        printf("====================================\n");
         #endif
 
 
@@ -233,6 +235,9 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
           }
         }
 
+
+
+
         for (int i = 0; i < node_number; ++i)
         {
           #if DEBUG_MESG_ENABLE
@@ -274,11 +279,12 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
           resolve_queue[i] = unique_queue;
         }
 
-        // ! check is there cutset larger than specific number
 
         // ! check is all nodes are primary input
+        // TODO: In the following block node_array be change by sonething
+
         // Check if all nodes in the resolve_queue are primary inputs without modifying the queue
-        current_list_array.clear();
+        
         for (int i = 0; i < node_number; ++i)
         {
           bool allPrimaryInputs = true;
@@ -295,8 +301,11 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
               // break;
             }
           }
-          // ! make sure next_list is unique
-          
+
+
+
+
+          //  make sure next_list is unique      
             next_list[i].sort([]( Abc_Obj_t &a,  Abc_Obj_t &b) {
               return Abc_ObjId(&a) < Abc_ObjId(&b);
             });
@@ -304,11 +313,6 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
             next_list[i].unique([](Abc_Obj_t& a, Abc_Obj_t& b) {
               return Abc_ObjId(&a) == Abc_ObjId(&b);
             });
-
-
-
-
-
 
           // Save output IDs
           std::vector<int> output_ids;
@@ -324,7 +328,6 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
 
             
 
-            // Ensure every list in ans_list_array is unique
 
 
           ans_list_array.push_front(ans_list);
@@ -373,7 +376,7 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
         //delete[] resolve_queue;
       }
        
-      current_list_array.clear(); 
+      
       /* printf("[FINAL] Next list array at iteration %d:\n", ITERATION); */
       // Ensure every list in next_list_array is unique
       next_list_array.sort([](std::list<Abc_Obj_t>& a, std::list<Abc_Obj_t>& b) {
@@ -390,7 +393,7 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t *pNtk,int CutsetsNumer)
 
 
 
-
+current_list_array.clear(); 
       for (auto& list : next_list_array)
       { 
         #if DEBUG_MESG_ENABLE
