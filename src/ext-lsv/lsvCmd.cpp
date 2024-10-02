@@ -146,7 +146,7 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
         }
         CutNodeNum = 0;
         tempcut.clear();
-        for(j = 0; j <= Abc_NtkObjNum(pNtk); j++){
+        for(j = 0; j < Abc_NtkObjNum(pNtk); j++){
           if(CutForm[j] == 1){
             CutNodeNum++;
             tempcut.push_back(j);
@@ -155,7 +155,7 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
             }
           }
         }
-        if(CutNodeNum <= CutNumMax){
+        if(!tempcut.empty() && CutNodeNum <= CutNumMax){
           int SameCutCheck = 0, k = 0, m = 0, CutCompareLarge = 0, CutCompareSmall = 0;
           for(j = 0; j < cut[Abc_ObjId(pObj)].size(); j++){
             k = 0;
@@ -169,42 +169,53 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
                 while(m < cut[Abc_ObjId(pObj)][j].size() && cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
                   m++;
                 }
-                
                 if(cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
                   CutCompareSmall = 0;
                   break;
                 }
                 
                 else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
-                  m++;
-                  CutCompareSmall++;                  
+                  CutCompareSmall++;
+                  if(m + 1 < cut[Abc_ObjId(pObj)][j].size()){
+                    m++;
+                  }
+                  else{
+                    break;
+                  }
+                                    
                 }
                 
                 
               }
               k = 0;
               for(m = 0; m < cut[Abc_ObjId(pObj)][j].size(); m++){
-                while(k < tempcut.size() && cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
+                while(k + 1 < tempcut.size() && cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
                   k++;
                 }
-                
                 if(cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
                   CutCompareLarge = 0;
                   break;
                 }
                 else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
-                  k++;  
-                  CutCompareLarge++;                
+                  CutCompareLarge++;
+                  if(k + 1 < tempcut.size()){
+                    k++;
+                  }
+                  else{
+                    break;
+                  }
+                               
                 }
                 
                 
               }
-              if(CutCompareSmall == tempcut.size()){
+              if(CutCompareLarge == cut[Abc_ObjId(pObj)][j].size()){
                 SameCutCheck = 1;
                 break;
               }
-              else if(CutCompareLarge == cut[Abc_ObjId(pObj)][j].size() && !CutCompareSmall == tempcut.size()){
+              else if(CutCompareLarge != cut[Abc_ObjId(pObj)][j].size() && CutCompareSmall == tempcut.size()){
                 cut[Abc_ObjId(pObj)].erase(cut[Abc_ObjId(pObj)].begin() + j);
+                j--;
                 CutCount--;
               }
             }
@@ -276,7 +287,7 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
       }
       CutNodeNum = 0;
       tempcut.clear();
-      for(j = 0; j <= Abc_NtkObjNum(pNtk); j++){
+      for(j = 0; j < Abc_NtkObjNum(pNtk); j++){
         if(CutForm[j] == 1){
           CutNodeNum++;
           tempcut.push_back(j);
@@ -285,7 +296,7 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
           }
         }
       }
-      if(CutNodeNum <= CutNumMax){
+      if(!tempcut.empty() && CutNodeNum <= CutNumMax){
         int SameCutCheck = 0, k = 0, m = 0, CutCompareLarge = 1, CutCompareSmall = 1;
 
         
@@ -298,46 +309,58 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
           if(j > 0){
             m = 0;
             for(k = 0; k < tempcut.size(); k++){
-              while(m < cut[Abc_ObjId(pObj)][j].size() && cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
-                m++;
+                while(m < cut[Abc_ObjId(pObj)][j].size() && cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
+                  m++;
+                }
+                if(cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
+                  CutCompareSmall = 0;
+                  break;
+                }
+                
+                else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
+                  CutCompareSmall++;
+                  if(m + 1 < cut[Abc_ObjId(pObj)][j].size()){
+                    m++;
+                  }
+                  else{
+                    break;
+                  }
+                                    
+                }
+                
+                
               }
-              
-              if(cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
-                CutCompareSmall = 0;
+              k = 0;
+              for(m = 0; m < cut[Abc_ObjId(pObj)][j].size(); m++){
+                while(k + 1 < tempcut.size() && cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
+                  k++;
+                }
+                if(cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
+                  CutCompareLarge = 0;
+                  break;
+                }
+                else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
+                  CutCompareLarge++;
+                  if(k + 1 < tempcut.size()){
+                    k++;
+                  }
+                  else{
+                    break;
+                  }
+                               
+                }
+                
+                
+              }
+              if(CutCompareLarge == cut[Abc_ObjId(pObj)][j].size()){
+                SameCutCheck = 1;
                 break;
               }
-              else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
-                m++;
-                CutCompareSmall++;                  
+              else if(CutCompareLarge != cut[Abc_ObjId(pObj)][j].size() && CutCompareSmall == tempcut.size()){
+                cut[Abc_ObjId(pObj)].erase(cut[Abc_ObjId(pObj)].begin() + j);
+                j--;
+                CutCount--;
               }
-              
-              
-            }
-            k = 0;
-            for(m = 0; m < cut[Abc_ObjId(pObj)][j].size(); m++){
-              while(k < tempcut.size() && cut[Abc_ObjId(pObj)][j][m] > tempcut[k]){
-                k++;
-              }
-              
-              if(cut[Abc_ObjId(pObj)][j][m] < tempcut[k]){
-                CutCompareLarge = 0;
-                break;
-              }
-              else if(cut[Abc_ObjId(pObj)][j][m] == tempcut[k]){
-                k++;  
-                CutCompareLarge++;                
-              }
-              
-              
-            }
-            if(CutCompareSmall == tempcut.size()){
-              SameCutCheck = 1;
-              break;
-            }
-            else if(CutCompareLarge == cut[Abc_ObjId(pObj)][j].size() && !CutCompareSmall == tempcut.size()){
-              cut[Abc_ObjId(pObj)].erase(cut[Abc_ObjId(pObj)].begin() + j);
-              CutCount--;
-            }
           }
         }
         if(SameCutCheck == 0){
