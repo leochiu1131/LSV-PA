@@ -1,0 +1,18 @@
+.model comp
+.inputs a b c
+.outputs out
+
+
+.names a b ab
+0- 1
+10 1
+
+
+.names b c bc
+0- 1
+10 1
+
+
+.names ab bc out
+0- 1
+10 1

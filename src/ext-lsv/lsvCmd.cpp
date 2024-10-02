@@ -17,6 +17,14 @@ struct PackageRegistrationManager {
 } lsvPackageRegistrationManager;
 
 void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
+
+
+
+
+
+
+
+  
   Abc_Obj_t* pObj;
   int i;
   Abc_NtkForEachNode(pNtk, pObj, i) {
@@ -31,6 +39,16 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
     }
   }
+
+
+
+
+
+
+
+
+
+
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
