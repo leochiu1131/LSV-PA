@@ -67,74 +67,111 @@ usage:
   return 1;
 }
 
-void Lsv_PrintCuts(Abc_Ntk_t* pNtk, vector<int> Cut_vec, Abc_Obj_t* root, Abc_Obj_t* now_node, int k,vector<vector<int> >& solutions) {
-  int Id_root = Abc_ObjId(root);
-  int ID = Abc_ObjId(now_node);
-  int num_of_fanins = Abc_ObjFaninNum(now_node);
-  /*
-  if(num_of_fanins > k) {
-    //printf("Too much : %d fanin_s in %d\n", num_of_fanins, ID);
-    return;
+bool vector_cmp(vector<int> v1, vector<int> v2) {
+  if(v1.size() != v2.size()) return (v1.size() < v2.size());
+  for(int i = 0; i < v1.size(); i++) {
+    if(v1[i] != v2[i]) return (v1[i] < v2[i]);
   }
-  */
-  if(num_of_fanins == 0) {
-    return;
+  return true;
+}
+
+bool is_vector_same(vector<int> v1, vector<int> v2) {
+  if(v1.size() != v2.size()) return false;
+  for(int i = 0; i < v1.size(); i++) {
+    if(v1[i] != v2[i]) return false;
   }
-  
-  int i = 0;
-  while(i < Cut_vec.size()) {   //remove myself
-    if(Cut_vec[i] == ID) {
-      Cut_vec.erase(Cut_vec.begin() + i);
-      break;
-    }
-    i++;
-  }
-  //printf("VECSIZE : %d\n", Cut_vec.size());
+  return true;
+}
+
+bool find_cut(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj, vector< vector< vector<int> > >& All_Cuts, vector<int>& finish_find_cut, int k) {
+  int ID_now = Abc_ObjId(pObj);
+  vector< vector<int> > Cuts_temp;
+  vector<int> cut_temp;
   Abc_Obj_t* pFanin;
   int t;
-  Abc_ObjForEachFanin( now_node, pFanin, t ){
-    int Id_fanin = Abc_ObjId(pFanin);
-    bool Not_in_cut = true;
-    for(int ttt = 0; ttt < Cut_vec.size(); ttt++) {
-      if(Cut_vec[ttt] == Id_fanin) Not_in_cut = false;
+  Abc_ObjForEachFanin( pObj, pFanin, t ){
+    cut_temp.clear();
+    int ID_fanin = Abc_ObjId(pFanin);
+    if(finish_find_cut[ID_fanin] == 0) {
+      cut_temp.push_back(ID_fanin);
+      All_Cuts[ID_fanin].push_back(cut_temp);
+      find_cut(pNtk, pFanin, All_Cuts, finish_find_cut, k);
+      finish_find_cut[ID_fanin] = 1;
     }
-    if(Not_in_cut) Cut_vec.push_back(Id_fanin);
-  }
-  sort(Cut_vec.begin(), Cut_vec.end());
-  //printf("Solution size : %d\n", solutions.size());
-  for(int i = 0; i < solutions.size(); i++) {
-    if(solutions[i].size() == Cut_vec.size()){
-      bool all_same = true;
-      for(int j = 0; j < Cut_vec.size(); j++) {
-        if(Cut_vec[j] != solutions[i][j]) {
-          all_same = false;
+    if(Cuts_temp.empty()) {
+      Cuts_temp = All_Cuts[ID_fanin];
+      continue;
+    }
+    vector<vector<int> > Cuts_left;
+    Cuts_left = Cuts_temp;
+    vector<vector<int> > Cuts_right;
+    Cuts_right = All_Cuts[ID_fanin];
+    Cuts_temp.clear();
+    for(int i = 0; i < Cuts_left.size(); i++) {
+      bool both_side_have_this_cut = false;
+      //check if this left is in right
+      for(int j = 0; j < Cuts_right.size(); j++) {  
+        if(is_vector_same(Cuts_left[i], Cuts_right[j])) {
+          // both side has this cut
+          both_side_have_this_cut = true;
+          // this is also a cut of pObj --> check if cut exist already
+          bool not_in_cut_yet = true;
+          for(int q = 0; q < Cuts_temp.size(); q++) {
+            if(is_vector_same(Cuts_temp[k], Cuts_left[i])) not_in_cut_yet = false;
+          }
+          if(not_in_cut_yet) Cuts_temp.push_back(Cuts_left[i]);
           break;
         }
       }
-      if(all_same) return;
+      if(both_side_have_this_cut) continue;
+      // merge all cuts in right with this left 
+      for(int j = 0; j < Cuts_right.size(); j++) {
+        //check if this right is in left
+        both_side_have_this_cut = false;
+        for(int ii = 0; ii < Cuts_left.size(); ii++) { 
+          if(is_vector_same(Cuts_left[ii], Cuts_right[j])) {
+            both_side_have_this_cut = true;
+            break;
+          }
+        }
+        if(both_side_have_this_cut) continue; 
+        // this is also a cut of pObj
+        // But do not check if need to add since will add in the above case 
+        cut_temp.clear();
+        //new cut
+        cut_temp = Cuts_left[i];
+        for(int w = 0; w < Cuts_right[j].size(); w++) {
+          cut_temp.push_back(Cuts_right[j][w]);
+        }
+        //sort in increasing order
+        sort(cut_temp.begin(), cut_temp.end());
+        //remove all same node in cut
+        int index = 1;
+        while(index < cut_temp.size()) {
+          if(cut_temp[index] == cut_temp[index - 1]) {
+            cut_temp.erase(cut_temp.begin() + index);
+          } else {
+            index++;
+          }
+        }
+        //add to Cuts
+        if(cut_temp.size() > k) continue;
+        bool not_in_cut_yet = true;
+        for(int w = 0; w < Cuts_temp.size(); w++) {
+          if(is_vector_same(Cuts_temp[w], cut_temp)) not_in_cut_yet = false;
+        }
+        if(not_in_cut_yet) Cuts_temp.push_back(cut_temp);
+
+      }
     }
+    sort(Cuts_temp.begin(), Cuts_temp.end(), vector_cmp);
   }
-  solutions.push_back(Cut_vec);
-  if(Cut_vec.size() <= k) {
-    printf("%d:", Id_root);
-    vector<int> B(Cut_vec.size());
-    for(int i = 0; i < Cut_vec.size(); i++) {
-      printf(" %d", Cut_vec[i]);
-    }
-    printf("\n");
+  for(int i = 0; i < Cuts_temp.size(); i++) {
+    All_Cuts[ID_now].push_back(Cuts_temp[i]);
   }
-  for(int i = 0; i < Cut_vec.size(); i++) {
-    Abc_Obj_t* pFanin_new = Abc_NtkObj(pNtk, Cut_vec[i]);
-    if(Abc_ObjFaninNum(pFanin_new) > 0) Lsv_PrintCuts(pNtk, Cut_vec, root, pFanin_new, k, solutions);
-    /*
-    for(int ttt = 0; ttt < Cut_vec.size(); ttt++) {
-      if(Cut_vec[ttt] == Id_fanin) Lsv_PrintCuts(pNtk, Cut_vec, root, pFanin_new, k);
-    }
-    */
-  }
-  return;
+  finish_find_cut[ID_now] = 1;
+  return true;
 }
-//Abc_NtkObj(pNtk, i)
 
 int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   if(argc != 2) {
@@ -148,7 +185,8 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
     k += argv[1][i] - '0';
   }
   if(k < 3 || k > 6) {
-    printf("k should be an integer between [3,6]");
+    printf("k should be an integer between [3,6]\n");
+    return 1;
   }
   if (!pNtk) {
     Abc_Print(-1, "Empty network.\n");
@@ -156,12 +194,45 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   }
   Abc_Obj_t* pObj;
   int i;
+  vector<int> finish_find_cut;
+  vector< vector< vector<int> > > All_Cuts;
+  vector< vector<int> > Cuts;
+  vector<int> cut;
+  finish_find_cut.resize(Abc_NtkObjNum(pNtk));
+  All_Cuts.resize(Abc_NtkObjNum(pNtk));
   Abc_NtkForEachObj(pNtk, pObj, i) {
-    vector<int> Cut_nodes;
-    vector<vector<int> > solutions;
-    Cut_nodes.push_back(Abc_ObjId(pObj));
-    printf("%d: %d\n", Abc_ObjId(pObj), Abc_ObjId(pObj));
-    Lsv_PrintCuts(pNtk, Cut_nodes, pObj, pObj, k, solutions);
+    int ID_now = Abc_ObjId(pObj);
+    Cuts.clear();
+    cut.clear();
+    if(Abc_ObjFaninNum(pObj) == 0) {
+      All_Cuts[ID_now].clear();
+      if(Abc_ObjFanoutNum(pObj) == 0) {  // constant 0 node (not sure)  
+        finish_find_cut[ID_now] = 1;
+      } else {
+        printf("%d: %d\n", ID_now, ID_now);
+        cut.push_back(ID_now);
+        Cuts.clear();
+        Cuts.push_back(cut);
+        All_Cuts[ID_now] = Cuts;
+      }
+      continue;
+    }
+    if(finish_find_cut[ID_now] == 0) {
+      All_Cuts[ID_now].clear();
+      cut.push_back(ID_now);
+      Cuts.clear();
+      All_Cuts[ID_now].push_back(cut);
+      find_cut(pNtk, pObj, All_Cuts, finish_find_cut, k);
+    }
+    //printf("\n");
+    for(int ii = 0; ii < All_Cuts[ID_now].size(); ii++) {
+      //if(All_Cuts[ID_now][i].size() > k) break;
+      printf("%d:", ID_now);
+      for(int v = 0; v < All_Cuts[ID_now][ii].size(); v++) {
+        printf(" %d", All_Cuts[ID_now][ii][v]);
+      }
+      printf("\n");
+    }
   }
   return 0;
 }
