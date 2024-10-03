@@ -93,16 +93,6 @@ void RecursiveProcess(Abc_Obj_t* pNode, int k) {
 	CutSet* fanin0Cuts = static_cast<CutSet*>(pFanin0->pData);
 	CutSet* fanin1Cuts = static_cast<CutSet*>(pFanin1->pData);
 
-	// Abc_Obj_t* pFanin0 = (Abc_ObjFaninNum(pNode) > 0) ? Abc_ObjFanin0(pNode) : nullptr;
-	// Abc_Obj_t* pFanin1 = (Abc_ObjFaninNum(pNode) > 1) ? Abc_ObjFanin1(pNode) : nullptr;
-
-	// if (pFanin0 != nullptr) RecursiveProcess(pFanin0, k);
-	// if (pFanin1 != nullptr) RecursiveProcess(pFanin1, k);
-
-	// CutSet* fanin0Cuts = (pFanin0 != nullptr) ? static_cast<CutSet*>(pFanin0->pData) : nullptr;
-	// CutSet* fanin1Cuts = (pFanin1 != nullptr) ? static_cast<CutSet*>(pFanin1->pData) : static_cast<CutSet*>(pFanin0->pData);
-
-
 	// Combine cuts from both fanins
     for (const auto& cut0 : *fanin0Cuts) {
         for (const auto& cut1 : *fanin1Cuts) {
@@ -124,6 +114,10 @@ bool compareBySize(const set<int>& a, const set<int>& b) {
     return a.size() < b.size();
 }
 
+bool contains(const set<int>& a, const set<int>& b) {
+	return includes(a.begin(), a.end(), b.begin(), b.end());
+}
+
 void Print_AllCut(Abc_Obj_t* pNode) {
 	CutSet* cuts = static_cast<CutSet*>(pNode->pData);
 
@@ -131,12 +125,32 @@ void Print_AllCut(Abc_Obj_t* pNode) {
 		sort(cuts->begin(), cuts->end(), compareBySize);
 
 		// Print the k-feasible cuts
-		for (const auto& cut : *cuts) {
-			Abc_Print(1, "%d: ", Abc_ObjId(pNode));
-			for (const auto& fanin : cut) {
-				Abc_Print(1, "%d ", fanin);
+		// for (const auto& cut : *cuts) {
+		// 	Abc_Print(1, "%d: ", Abc_ObjId(pNode));
+		// 	for (const auto& fanin : cut) {
+		// 		Abc_Print(1, "%d ", fanin);
+		// 	}
+		// 	Abc_Print(1, "\n");
+		// }
+		for (size_t i = 0; i < cuts->size(); ++i) {
+			bool isContained = false;
+
+			// check if this cut contains other cuts
+			for (size_t j = 0; j < cuts->size(); ++j) {
+				if (i != j && contains((*cuts)[i], (*cuts)[j])) {
+					isContained = true;
+					break;
+				}
 			}
-			Abc_Print(1, "\n");
+
+			// only if the cut 
+			if (!isContained) {
+				Abc_Print(1, "%d: ", Abc_ObjId(pNode));
+				for (const auto& fanin : (*cuts)[i]) {
+					Abc_Print(1, "%d ", fanin);
+				}
+				Abc_Print(1, "\n");
+			}
 		}
 	}
 	else {
@@ -174,7 +188,9 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int k) {
 		Print_AllCut(pObj);
 	}
 	// Abc_NtkForEachObj(pNtk, pObj, i) {
-	// 	Print_AllCut(pObj);
+		// Abc_Print(-1, "type: %d\n", pObj->Type);
+		// cout << endl;
+		// Print_AllCut(pObj);
 	// }
 
 	// Reset pData for all nodes in the network
