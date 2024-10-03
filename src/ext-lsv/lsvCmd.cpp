@@ -123,7 +123,6 @@ bool find_cut(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj, vector< vector< vector<int> > >&
     Cuts_right = All_Cuts[ID_fanin];
     Cuts_temp.clear();
     for(int i = 0; i < Cuts_left.size(); i++) {
-      
       //bool both_side_have_this_cut = false;
       /*
       //check if this left is in right
@@ -234,6 +233,10 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
   int k = 0;
   for(int i = 0; argv[1][i] != '\0'; i++) {
+    if (argv[1][i] < '3' || argv[1][i] > '6') {
+      printf("k should be an integer between [3,6]\n");
+      return 1;
+    } 
     k = k * 10;
     k += argv[1][i] - '0';
   }
