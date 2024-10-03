@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <algorithm>
 
-#define DEBUG_MESG_ENABLE 1
+#define DEBUG_MESG_ENABLE 0
 #define DUMP_ANSWER 1
 
 
