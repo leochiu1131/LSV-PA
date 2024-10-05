@@ -95,7 +95,7 @@ void Lsv_NtkCrossProduct(const std::map<unsigned int, std::vector<std::vector<un
     for (const auto &current_vec : res) {
         for (const auto &next_vec : next_set) {
             // if current cut is > k
-            if (current_vec.size() > k || next_vec.size() > k)
+            if (current_vec.size() > k || next_vec.size() > k || current_vec.size() + next_vec.size() > k)
               continue;
             std::vector<unsigned int> combined_vec = current_vec;
             combined_vec.insert(combined_vec.end(), next_vec.begin(), next_vec.end());
@@ -156,42 +156,46 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
     }
     mp[Abc_ObjId(pObj)] = res;
   }
-  Abc_NtkForEachPo(pNtk, pObj, i) {
-    // printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
-    Abc_Obj_t* pFanin;
-    int j;
-    std::vector<unsigned int> fanins;
-    // For each node, find their fanins
-    Abc_ObjForEachFanin(pObj, pFanin, j) {
-      fanins.push_back(Abc_ObjId(pFanin));
-    }
+  // Abc_NtkForEachPo(pNtk, pObj, i) {
+  //   // printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+  //   Abc_Obj_t* pFanin;
+  //   int j;
+  //   std::vector<unsigned int> fanins;
+  //   // For each node, find their fanins
+  //   Abc_ObjForEachFanin(pObj, pFanin, j) {
+  //     fanins.push_back(Abc_ObjId(pFanin));
+  //   }
 
-    // the pObj itself is a cut too
-    std::vector<std::vector<unsigned int>> res;
-    // find cuts with respect to the pObj
-    Lsv_NtkCrossProduct(mp, fanins, res, k);
-    res.insert(std::begin(res), std::vector<unsigned int>{Abc_ObjId(pObj)});
-    for (int i = 0; i < res.size(); i++) {
-      // if the size of cut > k, ignore
-      if (res[i].size() > k)
-        continue;
-      printf("%d: ", Abc_ObjId(pObj));
-      for (int j = 0; j < res[i].size(); j++) {
-        printf("%d", res[i][j]);
-        if (j == res[i].size()-1)
-          printf("\n");
-        else
-          printf(" ");
-      }
-    }
-  }
+  //   // the pObj itself is a cut too
+  //   std::vector<std::vector<unsigned int>> res;
+  //   // find cuts with respect to the pObj
+  //   Lsv_NtkCrossProduct(mp, fanins, res, k);
+  //   res.insert(std::begin(res), std::vector<unsigned int>{Abc_ObjId(pObj)});
+  //   for (int i = 0; i < res.size(); i++) {
+  //     // if the size of cut > k, ignore
+  //     if (res[i].size() > k)
+  //       continue;
+  //     printf("%d: ", Abc_ObjId(pObj));
+  //     for (int j = 0; j < res[i].size(); j++) {
+  //       printf("%d", res[i][j]);
+  //       if (j == res[i].size()-1)
+  //         printf("\n");
+  //       else
+  //         printf(" ");
+  //     }
+  //   }
+  // }
 }
 
 int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  // if (argc != 2)
-  //   goto usage;
-  printf("argc: %d, argv[1]: %s\n", argc, argv[1]);
+  if (argc != 2){
+    Abc_Print(-2, "usage: lsv_printcut k\n");
+    Abc_Print(-2, "\t        prints the k-feasible cuts of primary inputs and AND nodes\n");
+    // Abc_Print(-2, "\t-h    : print the command usage\n");
+    return 1;
+  }
+  // printf("argc: %d, argv[1]: %s\n", argc, argv[1]);
   if (!pNtk) {
     Abc_Print(-1, "Empty network.\n");
     return 1;
