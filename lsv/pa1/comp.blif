@@ -1,0 +1,25 @@
+.model compressor
+.inputs x0 x1 x2 x3 x4
+.outputs y0 y1 y2
+.subckt adder3 A=x0 B=x1 C=x2 O0=b O1=a
+.subckt adder3 A=b B=x3 C=x4 O0=y0 O1=c
+.names a c y1
+10 1
+01 1
+.names a c y2
+11 1
+.end
+
+.model adder3
+.inputs A B C
+.outputs O0 O1
+.names A B C O0
+001 1
+010 1
+100 1
+111 1
+.names A B C O1
+11- 1
+1-1 1
+-11 1
+.end
