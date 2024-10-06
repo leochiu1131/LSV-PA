@@ -1,0 +1,4 @@
+read /ibmnas/427/r113/r13943143/LSV-PA/lsv/pa1/benchmarks/square.blif
+strash
+lsv_printcut 6
+quit
