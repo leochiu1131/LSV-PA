@@ -3,12 +3,10 @@
 #include "base/main/mainInt.h"
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
-void registerHelloCommand(Abc_Frame_t* pAbc);
 void registercutCommand(Abc_Frame_t* pAbc);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
-  registerHelloCommand(pAbc); // Register lsv_hello command from trial.cpp
   registercutCommand(pAbc);
 }
 

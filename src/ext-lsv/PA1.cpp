@@ -129,8 +129,16 @@ int Lsv_PrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
         pObj = (Abc_Obj_t *)Vec_PtrPop(Q);  // 進行類型轉換
         ProcessNode(pObj, T, Q, k);
     }
-    Abc_NtkForEachPi(pNtk, pObj, i) {
-        ProcessNode(pObj, T, Q, k);
+    Abc_NtkForEachPo(pNtk, pObj, i) {
+        int j;
+        Vec_Int_t* cut = Vec_IntAlloc(1);
+        printf("%d: %d\n", Abc_ObjId(pObj), Abc_ObjId(pObj));
+        Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pObj);
+        Vec_PtrForEachEntry(Vec_Int_t*, Vec_VecEntry(T, Abc_ObjId(pFanin0)), cut, j) {
+            printf("%d: ", Abc_ObjId(pObj));
+            PrintCut(cut);
+            printf("\n");
+        }
     }
     // 釋放資源
     Vec_VecFree(T);
