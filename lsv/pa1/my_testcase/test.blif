@@ -1,0 +1,22 @@
+.model test
+.inputs a1 a2 a3 a4
+.outputs out
+.names a1 a2 t1
+11 1
+
+.names a2 a3 t2
+11 1
+
+.names a3 a4 t3
+11 1
+
+.names t1 t2 t4
+11 1
+
+.names t2 t3 t5
+11 1
+
+.names t4 t5 out
+11 1
+
+.end

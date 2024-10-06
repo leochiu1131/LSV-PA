@@ -1,0 +1,13 @@
+.model test
+.inputs a1 a2 a3
+.outputs out
+.names a1 a2 t1
+11 1
+
+.names a2 a3 t2
+11 1
+
+.names t1 t2 out
+11 1
+
+.end
