@@ -115,6 +115,14 @@ void cuts_free(Cut_t** cuts, int size){
     // printf("after free cuts\n");
     return;
 }
+void print_cut(Cut_t* cut){
+    for(int i = 0; i < cut->cut_size; i++){
+        printf("%d ", cut->cut_nodes[i]);
+    }
+    printf("\n");
+    return;
+}
+
 int cut_equal(Cut_t* cut1, Cut_t* cut2){
     if(cut1->cut_size != cut2->cut_size){
         return 0;
@@ -155,7 +163,7 @@ void sort_cut(Cut_t** cuts, int size){
     return;
 }
 // is cut1 a subset of cut2
-int cut_subset(Cut_t* cut1, Cut_t* cut2){
+int cut_subset(const Cut_t* cut1, const Cut_t* cut2){
     if(cut1->cut_size > cut2->cut_size){
         return 0;
     }
@@ -183,7 +191,11 @@ void remove_subset_cut(Cut_t** cuts, int& size){
     for(int j = 1; j < size; j++){
         int flag = 0;
         for(int k = 0; k <= i; k++){
+            // printf("before cut_subset\n");
             if(cut_subset(new_cuts[k], cuts[j])){
+                // printf("in cut_subset\n");
+                // print_cut(new_cuts[k]);
+                // print_cut(cuts[j]);
                 flag = 1;
                 break;
             }
@@ -193,9 +205,15 @@ void remove_subset_cut(Cut_t** cuts, int& size){
             new_cuts[i] = cut_copy(cuts[j]);
         }
     }
-    cuts_free(cuts, size);
+    // printf("After remove_subset_cut\n");
+    // cuts_free(cuts, size);
+    // printf("After cuts_free\n");
     size = i+1;
-    cuts = new_cuts;
+    for(int j = 0; j < size; j++){
+        cuts[j] = new_cuts[j];
+    }
+    // cuts_free(new_cuts, size);
+    // cuts = new_cuts;
     return;
 }
 Cut_t** cut_sort_and_eliminate(Cut_t** cuts, int& size, int k_feasible){
@@ -207,8 +225,9 @@ Cut_t** cut_sort_and_eliminate(Cut_t** cuts, int& size, int k_feasible){
     // printf("\n");
     // qsort(cuts, size, sizeof(Cut_t*), cut_compare);
     sort_cut(cuts, size);
-    // remove_subset_cut(cuts, size);
-    // printf("After sort cutsize: ");
+    // printf("Before remove_subset_cut\n");
+    remove_subset_cut(cuts, size);
+    // printf("After remove_subset_cut");
     // for(int j = 0; j < size; j++){
     //     printf("%d ", cuts[j]->cut_size);
     // }
@@ -236,11 +255,4 @@ Cut_t** cut_sort_and_eliminate(Cut_t** cuts, int& size, int k_feasible){
     }
     size = i+1;
     return cuts;
-}
-void print_cut(Cut_t* cut){
-    for(int i = 0; i < cut->cut_size; i++){
-        printf("%d ", cut->cut_nodes[i]);
-    }
-    printf("\n");
-    return;
 }
