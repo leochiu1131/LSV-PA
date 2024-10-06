@@ -1,0 +1,10 @@
+.model simple_circuit
+.inputs 1 2 3
+.outputs 6
+.names 1 2 4
+11 1
+.names 2 3 5
+11 1
+.names 4 5 6
+11 1
+.end
