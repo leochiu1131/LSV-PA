@@ -5,6 +5,8 @@
 #include <set>
 #include <iostream>
 #include <ostream>
+#include <algorithm>
+#include <iterator>
 
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -73,6 +75,20 @@ std::set<int> setUnion(const std::set<int> s1, const std::set<int> s2){
   return result;
 }
 
+void dominateCheck(std::pair<std::set<int>, bool>& s1, std::pair<std::set<int>, bool>& s2){
+  std::set<int> diff1to2, diff2to1;
+  std::set_difference(s1.first.begin(), s1.first.end(), s2.first.begin(), s2.first.end(), std::inserter(diff1to2, diff1to2.begin()));
+  std::set_difference(s2.first.begin(), s2.first.end(), s1.first.begin(), s1.first.end(), std::inserter(diff2to1, diff2to1.begin()));
+  // S1 dominates S2
+  if(diff1to2.size()==0 && diff2to1.size()>0){
+    s2.second = false;
+  }
+  // S2 dominates S1
+  else if(diff1to2.size()>0 && diff2to1.size()==0){
+    s1.second = false;
+  }
+}
+
 int Lsv_PrintCut(Abc_Frame_t* pAbc, int argc, char** argv){
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
   int c;
@@ -90,132 +106,115 @@ int Lsv_PrintCut(Abc_Frame_t* pAbc, int argc, char** argv){
     return 1;
   }
 
-  // PA1 
+  // PI //
   if(argc==2){
     int k = argv[1][0]-'0';
     Abc_Obj_t *pObj;
     int i;
     std::vector<std::vector<std::set<int>>> eachNodeSet;
-    eachNodeSet.resize(Abc_NtkPiNum(pNtk)+Abc_NtkObjNum(pNtk));
-    std::cout<<"eachNodeSet.size() = "<<eachNodeSet.size()<<std::endl;
+    eachNodeSet.resize(2*(Abc_NtkPiNum(pNtk)+Abc_NtkObjNum(pNtk)+Abc_NtkPoNum(pNtk)));
 
     Abc_NtkForEachPi(pNtk, pObj, i){
       // PIs
       if(Abc_ObjIsPi(pObj)){
         std::vector<std::set<int>> mySet;
-        std::set<int> subset = {pObj->Id};
+        std::set<int> subset = {Abc_ObjId(pObj)};
         mySet.push_back(subset);
-        eachNodeSet.at(pObj->Id-1) = mySet;
+        eachNodeSet.at(Abc_ObjId(pObj)) = mySet;
         if(1<=k){
-          printf("%d: %d\n", pObj->Id, pObj->Id);
+          printf("%d: %d\n", Abc_ObjId(pObj), Abc_ObjId(pObj));
         }
       }
     }
 
-    // TODO: 還沒修好
+    // AND NODE //
     Abc_NtkForEachNode(pNtk, pObj, i){
-      std::vector<std::set<int>> mySet;
-      mySet.push_back({pObj->Id});
+      std::vector<std::pair<std::set<int>, bool>> naiveSet;
+      std::pair<std::set<int>, bool> tmpPair;
+      tmpPair.first = {Abc_ObjId(pObj)};
+      tmpPair.second = true;
+      naiveSet.push_back(tmpPair);
+      // std::cout<<"NODE"<<pObj->Id<<" has "<<Abc_ObjFaninNum(pObj)<<" fanins."<<std::endl;
       Abc_Obj_t *fanin0 = Abc_ObjFanin0(pObj); 
       Abc_Obj_t *fanin1 = Abc_ObjFanin1(pObj);
-      std::vector<std::set<int>> f0Set = eachNodeSet.at(fanin0->Id-1);
-      std::vector<std::set<int>> f1Set = eachNodeSet.at(fanin1->Id-1);
+      std::vector<std::set<int>> f0Set = eachNodeSet.at(fanin0->Id);
+      std::vector<std::set<int>> f1Set = eachNodeSet.at(fanin1->Id);
 
+      // First, union two fanins' sets without checking dominance.
       for(const auto& s1: f0Set){
         for(const auto& s2: f1Set){
           std::set<int> unionS = setUnion(s1, s2);
+          // Check whether the set has been in naiveSet.
           if(unionS.size()<=k){
-            // Check whether the set has been in mySet.
             bool rep = false;
-            for(const auto& my: mySet){
-              if(unionS==my){
+            for(const auto& nS: naiveSet){
+              if(unionS==nS.first){
                 rep = true;
                 break;
               }
             }
             if(!rep){
-              mySet.push_back(unionS);
+              tmpPair.first = unionS;
+              tmpPair.second = true;
+              naiveSet.push_back(tmpPair);
             }
           }
         }
       }
 
-      eachNodeSet.at(pObj->Id-1) = mySet;
-      for(const auto& s: mySet){
-          printf("%d:", pObj->Id);
-          for(const auto& mem: s){
-            printf(" %d", mem);
+      // Domainance checking
+      for(size_t i=0; i<naiveSet.size(); ++i){
+        if(naiveSet[i].second==true){
+          for(size_t j=i; j<naiveSet.size(); ++j){
+            if(naiveSet[j].second==true){
+              dominateCheck(naiveSet[i], naiveSet[j]);
+            }
           }
-          printf("\n");
-      }
-    }
-
-    Abc_NtkForEachPo(pNtk, pObj, i){
-      std::vector<std::set<int>> mySet;
-      mySet.push_back({pObj->Id});
-      Abc_Obj_t *fanin0 = Abc_ObjFanin0(pObj); 
-      std::vector<std::set<int>> f0Set = eachNodeSet.at(fanin0->Id-1);
-
-      if(1<=k){
-        printf("%d: %d\n", pObj->Id, pObj->Id);
-      }
-      for(const auto& s: f0Set){
-        if(s.size()<=k){
-          printf("%d:", pObj->Id);
-          for(const auto& mem: s){
-            printf(" %d", mem);
-          }
-          printf("\n");
         }
       }
+
+      // Result
+      for(const auto& s: naiveSet){
+        if(s.second==true){
+          eachNodeSet.at(Abc_ObjId(pObj)).push_back(s.first);
+        }
+      }
+
+      // Print
+      for(const auto& s: eachNodeSet.at(Abc_ObjId(pObj))){
+          printf("%d:", Abc_ObjId(pObj));
+          for(const auto& mem: s){
+            printf(" %d", mem);
+          }
+          printf("\n");
+      }
     }
 
-    // Abc_NtkForEachObj(pNtk, pObj, i){
-    //   std::cout<<i<<std::endl;
-    //   if(Abc_ObjIsNone(pObj)){
-    //     continue;
+    // PO //
+    // Abc_NtkForEachPo(pNtk, pObj, i){
+    //   // std::cout<<"----------------------------------------"<<std::endl;
+    //   // std::cout<<"NOW is NODE"<<Abc_ObjId(pObj)<<std::endl;
+    //   std::vector<std::set<int>> mySet;
+    //   mySet.push_back({Abc_ObjId(pObj)});
+    //   // std::cout<<"NODE"<<Abc_ObjId(pObj)<<" has "<<Abc_ObjFaninNum(pObj)<<" fanins."<<std::endl;
+    //   Abc_Obj_t *fanin0 = Abc_ObjFanin0(pObj); 
+    //   // std::cout<<"NODE"<<Abc_ObjId(pObj)<<" 's fanin is NODE"<<Abc_ObjId(Abc_ObjFanin0(pObj))<<std::endl;
+    //   std::vector<std::set<int>> f0Set = eachNodeSet.at(Abc_ObjId(fanin0));
+    //   // std::cout<<"fanin0->Id"<<Abc_ObjId(fanin0)<<std::endl;
+
+    //   if(1<=k){
+    //     printf("%d: %d\n", Abc_ObjId(pObj), Abc_ObjId(pObj));
     //   }
-    //   // PIs
-    //   if(Abc_ObjIsPi(pObj)){
-    //     std::cout<<"PI"<<std::endl;
-    //     std::vector<std::set<int>> mySet;
-    //     std::set<int> subset = {pObj->Id};
-    //     mySet.push_back(subset);
-    //     eachNodeSet.push_back(mySet);
-    //     printf("%d: %d\n", pObj->Id, pObj->Id);
-    //   }
-    //   // Not PIs
-    //   else{
-    //     std::cout<<"NOT PI"<<std::endl;
-    //     std::vector<std::set<int>> mySet;
-    //     mySet.push_back({pObj->Id});
-
-    //     Abc_Obj_t *fanin0 = Abc_ObjFanin0(pObj); 
-    //     Abc_Obj_t *fanin1 = Abc_ObjFanin1(pObj);
-    //     std::vector<std::set<int>> f0Set = eachNodeSet.at(fanin0->Id-1);
-    //     std::vector<std::set<int>> f1Set = eachNodeSet.at(fanin1->Id-1);
-
-    //     for(const auto& s1: f0Set){
-    //       for(const auto& s2: f1Set){
-    //         std::set<int> unionS = setUnion(s1, s2);
-    //         mySet.push_back(unionS);
+    //   for(const auto& s: f0Set){
+    //     if(s.size()<=k){
+    //       printf("%d:", Abc_ObjId(pObj));
+    //       for(const auto& mem: s){
+    //         printf(" %d", mem);
     //       }
+    //       printf("\n");
     //     }
-
-    //     eachNodeSet.push_back(mySet);
-    //     for(const auto& s: mySet){
-    //       if(s.size()<=k){
-    //         printf("%d :", pObj->Id);
-    //         for(const auto& mem: s){
-    //           printf(" %d", mem);
-    //         }
-    //         printf("\n");
-    //       }
-    //     }
-        
     //   }
     // }
-
   }
   else{
     printf("Please give a number k.\n");
