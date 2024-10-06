@@ -79,7 +79,7 @@ int find_index(int* id_to_index, int array_size, int node_id) {
 int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcut_size, int* id_to_index, int* num_cut_per_obj) {
   int nodeID = Abc_ObjId(pObj);
   int index = find_index(id_to_index, kcut_size, nodeID);
-  printf("nodeID = %d, index = %d, kcut_size = %d\n", nodeID, index, kcut_size);
+  // printf("nodeID = %d, index = %d, kcut_size = %d\n", nodeID, index, kcut_size);
   if(index != -1){
     return index;
   }
@@ -87,13 +87,14 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   index = kcut_size;
   kcut_size++;
   id_to_index[index] = nodeID;
-  printf("nodeID = %d, index = %d, kcut_size = %d\n", nodeID, index, kcut_size);
+  // printf("nodeID = %d, index = %d, kcut_size = %d\n", nodeID, index, kcut_size);
 
   int fanin_num = Abc_ObjFaninNum(pObj);
-  printf("fanin_num = %d\n", fanin_num);
+  // printf("fanin_num = %d\n", fanin_num);
   if(fanin_num == 0){
     num_cut_per_obj[index] = 1;
     k_cut[index] = (Cut_t**)malloc(sizeof(Cut_t*) * 1);
+    // printf("nodeID = %d, pcut = %p\n", nodeID, k_cut[index]);
     k_cut[index][0] = cut_new(&nodeID, 1);
     return index;
   }
@@ -107,20 +108,26 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   Abc_ObjForEachFanin(pObj, pFanin, i) {
     int faninID = (int)Abc_ObjId(pFanin);
     int fanin_index = Lsv_find_cut(pFanin, k_feasible, k_cut, kcut_size, id_to_index, num_cut_per_obj);
-    printf("faninID = %d, fanin_index = %d\n", faninID, fanin_index);
-    printf("num_cut_per_obj[fanin_index] = %d\n", num_cut_per_obj[fanin_index]);
+    // printf("faninID = %d, fanin_index = %d\n", faninID, fanin_index);
+    // printf("num_cut_per_obj[fanin_index] = %d\n", num_cut_per_obj[fanin_index]);
     
     Cut_t** fanin_cut = k_cut[fanin_index];
     // printf("fanin_cut[0] = %p\n", fanin_cut[0]);
+    // printf("malloc size = %d\n", (cut_accumulate_size * num_cut_per_obj[fanin_index] + 1));
     // merge cut_accumulate and fanin_cut
     Cut_t** cut_temp = (Cut_t**)malloc(sizeof(Cut_t*) * (cut_accumulate_size * num_cut_per_obj[fanin_index] + 1));
-    printf("cut_temp = %p\n", cut_temp);
+    // if(cut_temp == NULL){
+    //   printf("cut_temp == NULL\n");
+    // }
+    // printf("cut_temp = %p, %d\n", cut_temp, cut_temp);
     if(cut_accumulate != NULL){
-      printf("cut_accumulate != NULL\n");
+      // printf("cut_accumulate != NULL\n");
       for(int j=0; j<cut_accumulate_size; j++){
         for(int k=0; k<num_cut_per_obj[fanin_index]; k++){
-          print_cut(cut_accumulate[j]);
-          print_cut(fanin_cut[k]);
+          // printf("j %d: ", cut_accumulate[j]->cut_size);
+          // print_cut(cut_accumulate[j]);
+          // printf("k %d: ", fanin_cut[k]->cut_size);
+          // print_cut(fanin_cut[k]);
           cut_temp[j*num_cut_per_obj[fanin_index]+k] = cut_new(cut_accumulate[j], fanin_cut[k]);
         }
       }
@@ -132,7 +139,7 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
       }
     }
     cut_accumulate_size *= num_cut_per_obj[fanin_index];
-    printf("cut_accumulate_size = %d\n", cut_accumulate_size);
+    // printf("cut_accumulate_size = %d\n", cut_accumulate_size);
     cut_sort_and_eliminate(cut_temp, cut_accumulate_size, k_feasible);
     cut_accumulate = cut_temp;
   }
@@ -140,6 +147,7 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   if(cut_accumulate == NULL){
     num_cut_per_obj[index] = 1;
     k_cut[index] = (Cut_t**)malloc(sizeof(Cut_t*) * 1);
+    // printf("nodeID = %d, pcut = %p\n", nodeID, k_cut[index]);
     k_cut[index][0] = cut_new(&nodeID, 1);
     return index;
   }
@@ -147,6 +155,7 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   cut_accumulate[cut_accumulate_size++] = cut_new(&nodeID, 1);
   num_cut_per_obj[index] = cut_accumulate_size;
   k_cut[index] = cut_accumulate;
+  // printf("nodeID = %d, pcut = %p\n", nodeID, k_cut[index]);
   return index;
 }
 
@@ -170,6 +179,7 @@ int Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int k_feasible) {
   }
 
   for(int i=0; i<kcut_size; i++){
+    // printf("Node %d\n", id_to_index[i]);
     cuts_free(k_cut[i], num_cut_per_obj[i]);
   }
   return 0;
