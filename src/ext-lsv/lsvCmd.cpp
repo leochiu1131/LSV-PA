@@ -226,6 +226,11 @@ int Lsv_CommandPrintCut(Abc_Frame_t *pAbc, int argc, char **argv)
     Abc_Print(-1, "Cut computation is available only for AIGs (run \"strash\").\n");
     return 1;
   }
+  if (k > 6 || k < 3)
+  {
+    Abc_Print(-1, "Value k should be between 3 and 6 (inclusive).\n");
+    return 1;
+  }
   Lsv_NtkPrintCuts(pNtk, k);
   return 0;
 
