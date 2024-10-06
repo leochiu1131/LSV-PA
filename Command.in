@@ -1,4 +1,4 @@
-read /ibmnas/427/r113/r13943151/LSV-PA/lsv/pa1/benchmarks/square.blif
+read /home/stu109611050/LSV-PA/lsv/pa1/benchmarks/square.blif
 strash
 lsv_printcut 6
 quit
