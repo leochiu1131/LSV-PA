@@ -4,9 +4,12 @@
 #include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 #include <vector>
 #include <algorithm>
 #include <queue>
+#include <iostream>
+#include <fstream>
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -119,8 +122,8 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
     }
     
     // merge cuts from fanins
-    for(auto node_id : next_level_nodes){                        
-      int fanin_id1 = -1, fanin_id2 = -1;      
+    for(auto node_id : next_level_nodes){         
+      int fanin_id1 = -1, fanin_id2 = -1;   
       for(int fanin_id:node_fanins[node_id]){            
         if(fanin_id1 == -1){
           fanin_id1 = fanin_id;
@@ -128,22 +131,40 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
           fanin_id2 = fanin_id;
         }
       }
-
+      node_cuts[node_id].push_back(std::vector<int>{node_id});
       if(fanin_id2 == -1){
-        node_cuts[node_id] = node_cuts[fanin_id1];
-        node_cuts[node_id].push_back(std::vector<int>{node_id});
-      }else{
-        node_cuts[node_id].push_back(std::vector<int>{node_id});
+        node_cuts[node_id].insert(node_cuts[node_id].end(),node_cuts[fanin_id1].begin(),node_cuts[fanin_id1].end());
+      }else{                
+        std::vector<std::vector<int>> merged_cuts;
         for(const auto &cut1:node_cuts[fanin_id1]){
           for(const auto &cut2:node_cuts[fanin_id2]){            
             std::vector<int> merged_cut;
             std::set_union(cut1.begin(),cut1.end(),cut2.begin(),cut2.end(),std::back_inserter(merged_cut));            
             if(merged_cut.size() <= K){
-              node_cuts[node_id].push_back(merged_cut);
+              merged_cuts.push_back(merged_cut);
+            }
+          }          
+        }  
+        
+        std::sort(merged_cuts.begin(),merged_cuts.end(),[](const std::vector<int>& a, const std::vector<int>& b){
+          return a.size() < b.size();
+        });      
+        std::vector<std::set<int>> check_list;
+        for(auto cut:merged_cuts){
+          std::set<int> cut_set(cut.begin(),cut.end());
+          bool duplicate = false;
+          for(auto it : check_list){
+            if( cut_set.size() > it.size() && std::includes(cut_set.begin(),cut_set.end(),it.begin(),it.end())){
+              duplicate = true;              
+              break;
             }
           }
-        }                  
-      }
+          if(!duplicate){
+            node_cuts[node_id].push_back(cut);
+            check_list.push_back(cut_set);
+          }
+        }        
+      }      
     }
   }
   
@@ -156,7 +177,7 @@ void Lsv_NtkPrintCut(Abc_Ntk_t* pNtk, int K) {
       }
       printf("\n");
     }
-  }
+  }  
 }
 
 int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
