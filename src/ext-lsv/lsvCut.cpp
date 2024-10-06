@@ -20,18 +20,6 @@ void init_lsv_printcut(Abc_Frame_t* pAbc) {
     Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCuts, 0);
 }
 
-// Fonction de nettoyage
-void CleanupLsv(Abc_Frame_t* pAbc) {}
-
-// Structure pour gérer l'enregistrement du paquet
-Abc_FrameInitializer_t frameInit = {init_lsv_printcut, CleanupLsv};
-
-struct PackageRegistrar {
-    PackageRegistrar() { 
-        Abc_FrameAddInitializer(&frameInit); 
-    }
-} registrar;
-
 // Vérifie si une coupe donnée bloque tous les chemins vers les PI
 bool isCutValid(const std::vector<int>& cut, Abc_Obj_t* pObj) {
     std::set<int> cutSet(cut.begin(), cut.end());
@@ -222,9 +210,33 @@ int Lsv_CommandPrintCuts(Abc_Frame_t* pAbc, int argc, char** argv) {
         return 0;
     }
 
-    // Obtenir le réseau courant
+    // Obtenir le réseau logique actuel
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+    if (!pNtk) {
+        printf("Erreur : Aucun réseau logique n'est disponible.\n");
+        return 0;
+    }
+
+    // Exécuter la fonction d'énumération des coupes
     EnumerateCuts(pNtk, k);
+
     return 0;
 }
+
+// Initialisation des commandes dans ABC
+static void init(Abc_Frame_t* pAbc) {
+    Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCuts, 0);
+}
+
+// Commande d'arrêt
+static void destroy(Abc_Frame_t* pAbc) {
+}
+
+// Déclaration des fonctions pour les commandes ABC
+Abc_FrameInitializer_t frame_initializer = {init, destroy};
+
+// Macro pour initialiser automatiquement les commandes ABC
+struct registrar {
+    registrar() { Abc_FrameAddInitializer(&frame_initializer); }
+} lsv_printcut_registrar;
 
