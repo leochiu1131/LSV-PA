@@ -1,0 +1,4 @@
+read ./lsv/pa1/benchmarks/div.blif
+strash
+lsv_printcut 6
+quit
