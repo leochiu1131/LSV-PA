@@ -1,0 +1,18 @@
+# Simple AIG
+.model simple_aig
+.inputs 1 2 3
+.outputs 6
+
+# Node 4 (AND of 1 and 2)
+.names 1 2 4
+11 1
+
+# Node 5 (AND of 2 and 3)
+.names 2 3 5
+11 1
+
+# Node 6 (AND of 4 and 5)
+.names 4 5 6
+11 1
+
+.end

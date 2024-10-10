@@ -1,0 +1,33 @@
+.model 4_bit_adder
+.inputs A3 A2 A1 A0 B3 B2 B1 B0 Cin
+.outputs S3 S2 S1 S0 Cout
+
+# Full adder for bit 0
+.subckt full_adder a=A0 b=B0 cin=Cin sum=S0 cout=C0
+
+# Full adder for bit 1
+.subckt full_adder a=A1 b=B1 cin=C0 sum=S1 cout=C1
+
+# Full adder for bit 2
+.subckt full_adder a=A2 b=B2 cin=C1 sum=S2 cout=C2
+
+# Full adder for bit 3
+.subckt full_adder a=A3 b=B3 cin=C2 sum=S3 cout=Cout
+
+# Full adder subcircuit
+.model full_adder
+.inputs a b cin
+.outputs sum cout
+.names a b cin sum
+001 1
+010 1
+100 1
+111 1
+.names a b cin cout
+011 1
+101 1
+110 1
+111 1
+.end
+
+.end
