@@ -1,0 +1,4 @@
+read /home/stu109611050/LSV-PA/lsv/pa1/benchmarks/square.blif
+strash
+lsv_printcut 6
+quit
