@@ -1,0 +1,4 @@
+read_blif blif/test.blif
+strash
+lsv_print_nodes
+lsv_printcut 4

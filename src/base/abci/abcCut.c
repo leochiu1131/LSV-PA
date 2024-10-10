@@ -203,7 +203,7 @@ Cut_Man_t * Abc_NtkCuts( Abc_Ntk_t * pNtk, Cut_Params_t * pParams )
     Cut_ManPrintStats( p );
 ABC_PRT( "TOTAL", Abc_Clock() - clk );
 //    printf( "Area = %d.\n", Abc_NtkComputeArea( pNtk, p ) );
-//Abc_NtkPrintCuts( p, pNtk, 0 );
+// Abc_NtkPrintCuts( p, pNtk, 0 );
 //    Cut_ManPrintStatsToFile( p, pNtk->pSpec, Abc_Clock() - clk );
 
     // temporary printout of stats
