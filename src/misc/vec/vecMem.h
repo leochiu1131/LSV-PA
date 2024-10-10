@@ -432,7 +432,7 @@ static inline void Vec_MemDumpTruthTables( Vec_Mem_t * p, char * pName, int nLut
 {
     FILE * pFile;
     char pFileName[1000];
-    sprintf( pFileName, "tt_%s_%02d.txt", pName ? pName : NULL, nLutSize );
+    printf( pFileName, "tt_%s_%02d.txt", pName ? pName : NULL, nLutSize );
     pFile = pName ? fopen( pFileName, "wb" ) : stdout;
     Vec_MemDump( pFile, p );
     if ( pFile != stdout )
