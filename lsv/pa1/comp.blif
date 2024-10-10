@@ -1,0 +1,57 @@
+.model compressor
+.inputs x0 x1 x2 x3 x4
+.outputs y0 y1 y2
+.names x0 x1 x2 x3 x4 y2
+00001 1
+00010 1
+00100 1
+01000 1
+10000 1
+11100 1
+11010 1
+11001 1
+10110 1
+10101 1
+10011 1
+01110 1
+01101 1
+01011 1
+00111 1
+11111 1
+.names x0 x1 x2 x3 x4 y1
+11000 1
+10100 1
+10010 1
+10001 1
+01100 1
+01010 1
+01001 1
+00110 1
+00101 1
+00011 1
+11100 1
+11010 1
+11001 1
+10110 1
+10101 1
+10011 1
+01110 1
+01101 1
+01011 1
+00111 1
+.names x0 x1 x2 x3 x4 y0
+11110 1
+11101 1
+11011 1
+10111 1
+01111 1
+11111 1
+#.subckt add a0=x0 a1=x1 b0=carry1 b1=carry2
+#.subckt add a0=x2 a1=x3 b0=carry3 b1=carry4
+#.subckt add a0=carry2 a1=carry4 b0=carry5 b1=carry6
+#.subckt add a0=carry1 a1=carry3 b0=carry7 b1=carry8
+#.subckt add a0=carry5 a1=carry8 b0=carry9 b1=carry10
+#.subckt add a0=carry7 a1=carry9 b0=carry11 b1=y0
+#.subckt add a0=x4 a1=carry6 b0=carry13 b1=y2
+#.subckt add a0=carry10 a1=carry13 b0=carry14 b1=y1
+.end
