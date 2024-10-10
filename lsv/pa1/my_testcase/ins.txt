@@ -1,0 +1,10 @@
+read lsv/pa1/adder.blif
+read lsv/pa1/test.blif
+lsv_printcut
+lsv_printcut k
+lsv_print_nodes
+
+cut -K 4
+# 4 = 4-feasible cut
+
+930: 767 771 840 857 926
