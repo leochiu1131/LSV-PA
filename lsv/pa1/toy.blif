@@ -1,0 +1,15 @@
+# Toy example for simple AIG
+.model toy
+.inputs a b c
+.outputs out
+
+.names a b n1
+11 1
+
+.names b c n2
+11 1
+
+.names n1 n2 out
+11 1
+
+.end
