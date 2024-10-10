@@ -3,9 +3,11 @@
 #include "base/main/mainInt.h"
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
+void registercutCommand(Abc_Frame_t* pAbc);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
+  registercutCommand(pAbc);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -19,7 +21,9 @@ struct PackageRegistrationManager {
 void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
   Abc_Obj_t* pObj;
   int i;
+  printf("Hello world!!!\n");
   Abc_NtkForEachNode(pNtk, pObj, i) {
+    
     printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
     Abc_Obj_t* pFanin;
     int j;
@@ -58,3 +62,10 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
+
+/*
+Abc_NtkForEachAnd(): iterate through all and gates
+Abc_NtkPoNum(): get the number of primary outputs
+Abc_ObjIsPi(): check if an object is PI
+Abc_ObjFanin0(): get the first fanin object of the object
+*/
