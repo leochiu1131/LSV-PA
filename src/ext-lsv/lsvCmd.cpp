@@ -20,11 +20,13 @@ using CutSet = std::set<Cut>;
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCut, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSDC, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandODC, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -235,7 +237,7 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
     Sim_UtilSimulate(pSimMan, 0);
 
     // Retrieve and print simulation results for POs
-    Abc_Obj_t* pObj;
+    // Abc_Obj_t* pObj;
     unsigned* pSimInfo;
     int j, k;
     // Abc_Print(1, "Simulation results for POs:\n");
@@ -323,8 +325,8 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
         // use SAT solver to check the missing patterns
         Abc_Ntk_t* pConeFanin0 = Abc_NtkCreateCone(pNtk, Abc_ObjFanin(pNode, 0), "Cone_for_fanin0", 1);
         Abc_Ntk_t* pConeFanin1 = Abc_NtkCreateCone(pNtk, Abc_ObjFanin(pNode, 1), "Cone_for_fanin1", 1);
-        Cnf_Dat_t* pCnf0 = Cnf_Derive(Abc_NtkToDar(pConeFanin0, 1, 1), 1);
-        Cnf_Dat_t* pCnf1 = Cnf_Derive(Abc_NtkToDar(pConeFanin1, 1, 1), 1);
+        Cnf_Dat_t* pCnf0 = Cnf_Derive(Abc_NtkToDar(pConeFanin0, 0, 0), 1);
+        Cnf_Dat_t* pCnf1 = Cnf_Derive(Abc_NtkToDar(pConeFanin1, 0, 0), 1);
 
         // Cnf_DataPrint(pCnf0, 1);
         
@@ -335,7 +337,6 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
         sat_solver* pSat = sat_solver_new();
         Cnf_DataWriteIntoSolverInt(pSat, pCnf0, 1, 0);
         Cnf_DataWriteIntoSolverInt(pSat, pCnf1, 1, 0);
-        Sat_SolverWriteDimacs(pSat, "./output_dimacs", NULL, NULL, 0);
 
         // Map the literals in CNF0 to the corresponding literals in CNF1 in the SAT solver
         Aig_Obj_t * pAigObj;
@@ -367,12 +368,11 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
         int res0 = sat_solver_addclause(pSat, &Lit0, &Lit0 + 1);
         int res1 = sat_solver_addclause(pSat, &Lit1, &Lit1 + 1);
 
-        // if (res0 == 0 || res1 == 0) {
-        //     printf("Failed to add unit clauses to the SAT solver.\n");
-        // } else {
-        //     printf("Unit clauses added successfully.\n");
-        // }
+        if (res0 == 0 || res1 == 0) {
+            printf("Failed to add unit clauses to the SAT solver.\n");
+        }
 
+        Sat_SolverWriteDimacs(pSat, "./output_dimacs", NULL, NULL, 0);
         // Solve the CNF formula
         int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
 
@@ -427,4 +427,107 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   Lsv_NtkFindSDC(pNtk, n);
   return 0;
 
+}
+
+// TODO PA2 Q2
+void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
+  Abc_Ntk_t* pComplNtk = Abc_NtkDup( pNtk );
+  Abc_Obj_t* pComplNode = Abc_NtkObj(pComplNtk, n);
+  Abc_Obj_t* pFanout;
+  int i;
+  Abc_ObjForEachFanout(pComplNode, pFanout, i) {
+    Abc_Obj_t* pFanin;
+    int k;
+    Abc_ObjForEachFanin(pFanout, pFanin, k) {
+      if (pFanin == pComplNode) {
+        Abc_ObjXorFaninC(pComplNode, k);
+      }
+    }
+  }
+
+  Abc_Ntk_t* pMiter = Abc_NtkMiter(pNtk, pComplNtk, 1, 0, 0, 0);
+  Abc_Obj_t *pObj, *pObjCopy, *pComplNodeInMiter, *pNodeInMiter;
+  Abc_NtkForEachObj(pComplNtk, pObj, i) {
+    pObjCopy = pObj->pCopy;
+    if (pObjCopy) {
+      printf("Node %d in original network corresponds to node %d in miter.\n", Abc_ObjId(pObj), Abc_ObjId(pObjCopy));
+      if (Abc_ObjId(pObj) == n) {
+        pComplNodeInMiter = pObjCopy;
+      }
+    }
+  }
+  Abc_NtkForEachObj(pNtk, pObj, i) {
+    pObjCopy = pObj->pCopy;
+    if (pObjCopy) {
+      printf("Node %d in original network corresponds to node %d in miter.\n", Abc_ObjId(pObj), Abc_ObjId(pObjCopy));
+      if (Abc_ObjId(pObj) == n) {
+        pNodeInMiter = pObjCopy;
+      }
+    }
+  }
+  if (!pNodeInMiter || !pComplNodeInMiter) {
+    Abc_Print(-1, "Failed to find the corresponding nodes in the miter.\n");
+    return;
+  }
+  Abc_Print(1, "Node %d in original network corresponds to node %d in miter.\n", n, Abc_ObjId(pNodeInMiter));
+  Abc_Print(1, "Node %d in complement network corresponds to node %d in miter.\n", n, Abc_ObjId(pComplNodeInMiter));
+  Abc_Print(1, "%s %s\n", pNodeInMiter->pNtk->pName, pComplNodeInMiter->pNtk->pName);
+  // Derive CNF for the miter
+  Cnf_Dat_t* pCnf = Cnf_Derive(Abc_NtkToDar(pMiter, 0, 0), 1);
+  Abc_Obj_t* pNodeInMiterFanin0 = Abc_NtkObj(pMiter, Abc_ObjFaninId(pNodeInMiter, 0)), *pNodeInMiterFanin1 = Abc_NtkObj(pMiter, Abc_ObjFaninId(pNodeInMiter, 1));
+
+  int status = 1;
+
+  while (status) {
+    // Create a SAT solver
+    sat_solver* pSat = sat_solver_new();
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
+    Cnf_DataPrint(pCnf, 1);
+
+    // Solve the CNF formula
+    status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+
+    if (status == l_False) {
+      // UNSAT: The rest patterns(all patterns: 00, 01, 10, 11) are ODCs
+
+    } else if (status == l_True) {
+      // SAT: find the satisfying assignment by sat solver var value
+      printf("%d %d %d\n", Abc_ObjId(pNodeInMiter), Abc_ObjId(pNodeInMiterFanin0), Abc_ObjId(pNodeInMiterFanin1));
+      printf("%d %d\n", pCnf->pVarNums[Abc_ObjId(pNodeInMiterFanin0)], pCnf->pVarNums[Abc_ObjId(pNodeInMiterFanin1)]);
+      fflush(stdout);
+      if (pCnf->pVarNums[Abc_ObjId(pNodeInMiterFanin0)] == -1 || pCnf->pVarNums[Abc_ObjId(pNodeInMiterFanin1)] == -1) {
+        // find the local assignment from Primary Inputs
+        
+
+      } else {
+        int v0 = sat_solver_var_value(pSat, pCnf->pVarNums[Abc_ObjFaninId(pNodeInMiter, 0)]);
+        int v1 = sat_solver_var_value(pSat, pCnf->pVarNums[Abc_ObjFaninId(pNodeInMiter, 1)]);
+        printf("ODC: (%d, %d)\n", v0, v1);
+      }
+      break;
+    } else {
+      // Undefined status
+      Abc_Print(1, "SAT solver returned undefined status.\n");
+    }
+  }
+
+}
+
+int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  
+  if (argc != 2){
+    Abc_Print(-2, "usage: lsv_odc <n>\n");
+    Abc_Print(-2, "\t        prints the local ODC for node n\n");
+    // Abc_Print(-2, "\t-h    : print the command usage\n");
+    return 1;
+  }
+  // printf("argc: %d, argv[1]: %s\n", argc, argv[1]);
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  int n = atoi(argv[1]);
+  Lsv_NtkFindODC(pNtk, n);
+  return 0;
 }
