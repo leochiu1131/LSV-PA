@@ -554,19 +554,21 @@ vector<pair<bool,bool>> Lsv_findOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     vector<pair<bool,bool>> care_patterns;
 	for (int i = 0; i < 4; i++) {
 		if (sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0) == l_False) {
-            printf("no solution\n");
 			break;
 		}	
-        printf("solution %d\n", i+1);
-        bool val0 = sat_solver_var_value(pSat, node_to_var[y0]);
-        bool val1 = sat_solver_var_value(pSat, node_to_var[y1]);
-        care_patterns.push_back({val0, val1});
+		bool val0 = sat_solver_var_value(pSat, node_to_var[y0]);
+		bool val1 = sat_solver_var_value(pSat, node_to_var[y1]);
+		care_patterns.push_back({val0, val1});
 
-        // add clauses to avoid duplicate solutions
-        lit Litss[2];
-        Litss[0] = toLitCond(node_to_var[y0], val0);
-        Litss[1] = toLitCond(node_to_var[y1], val1);
-        sat_solver_addclause(pSat, Litss, Litss + 2);
+		// add clause to block this solution
+		lit Litss[2];
+		Litss[0] = toLitCond(node_to_var[y0], val0);
+		Litss[1] = toLitCond(node_to_var[y1], val1);
+		
+		int result = sat_solver_addclause(pSat, Litss, Litss + 2);
+		if (result == 0) {
+			break;
+		}
 	}
 
     // find ODC patterns
