@@ -430,226 +430,209 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 }
 
-// 递归函数：计算节点的值
-int ComputeNodeValue(Abc_Obj_t* pNode, Cnf_Dat_t* pCnf, sat_solver* pSat) {
-    int varNum = pCnf->pVarNums[Abc_ObjId(pNode)];
-    printf("Node %d, varNum %d\n", Abc_ObjId(pNode), varNum);
-    fflush(stdout);
-    if (Abc_ObjIsPi(pNode)) {
-        // PI 节点应该有变量号
-        varNum = pCnf->pVarNums[Abc_ObjId(pNode)];
-        if (varNum >= 0) {
-            return sat_solver_var_value(pSat, varNum);
-        } else {
-            printf("Error: PI node with no variable number.\n");
-            return -1;
-        }
-    } else if (Abc_AigNodeIsConst(pNode)) {
-        return 1;
-    } else if (Abc_ObjIsNode(pNode)) {
-        // 内部节点，递归计算其 Fanin 的值
-        int value0 = ComputeNodeValue(Abc_ObjFanin0(pNode), pCnf, pSat);
-        int value1 = ComputeNodeValue(Abc_ObjFanin1(pNode), pCnf, pSat);
-
-        if (value0 == -1 || value1 == -1) {
-            printf("Error: Unable to compute value for node %d.\n", Abc_ObjId(pNode));
-            return -1;
-        }
-
-        // 处理反向（Complemented）边
-        int isCompl0 = Abc_ObjFaninC0(pNode);
-        int isCompl1 = Abc_ObjFaninC1(pNode);
-        int val0 = isCompl0 ? !value0 : value0;
-        int val1 = isCompl1 ? !value1 : value1;
-
-        // AIG 中的节点表示 AND 门
-        printf("Node %d, %d %d\n", Abc_ObjId(pNode), val0, val1);
-        return val0 & val1;
-    } else {
-        printf("Error: Unsupported node type (ID %d).\n", Abc_ObjId(pNode));
-        return -1;
-    }
-}
-
 // TODO PA2 Q2
 void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
-    Abc_Ntk_t* pComplNtk = NULL;
-    Abc_Ntk_t* pMiter = NULL;
-    Cnf_Dat_t* pCnf = NULL;
-    sat_solver* pSat = NULL;
-    Abc_Obj_t *pObj, *pObjCopy, *pComplNodeInMiter, *pNodeInMiter;
-    int status = 1;
-    int cnt = 0;
+    // Attempt1: Use Cnf_Derive; however, it optimizes the CNF formula and therefore some variables are missing.
+    // Attmept2: Add the block clause to the original network and regerate the CNF formula every time; however, the formula remains the same and I don't know the reason. 
+    // Attmept3: Convert the network by myself
+    Cnf_Dat_t* pCnf = Cnf_Derive(Abc_NtkToDar(pNtk, 0, 0), 1);
+    sat_solver* pSat1 = sat_solver_new();
+    Cnf_DataWriteIntoSolverInt(pSat1, pCnf, 1, 0);
+    int s = sat_solver_solve(pSat1, NULL, NULL, 0, 0, 0, 0);
+    if (s == l_False) {
+      printf("no odc\n");
+    } else if (s == l_True) {
+      Cnf_DataPrint(pCnf, 1);
+    } else {
+      printf("SAT solver returned undefined status.\n");
+    }
+    // return;
+
+    // Create sat solver
+    sat_solver* pSat = sat_solver_new();
+    std::map<Abc_Obj_t*, int> ntkObjToVar, ntkPoToVar;
+    std::map<int, Abc_Obj_t*> ntkVarToObj;
+
+    // Create the CNF formula for the original network
+    Abc_Obj_t* pObj;
     int i;
+    Abc_NtkForEachObj(pNtk, pObj, i) {
+      printf("Node: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj));
+      ntkObjToVar[pObj] = i;
+      ntkVarToObj[i] = pObj;
+    }
+    int VarShift = ntkObjToVar.size();
 
-    while (status && cnt++ < 4) {
-      fflush(stdout);
-        // Clean up previous iterations
-        if (pComplNtk) Abc_NtkDelete(pComplNtk);
-        if (pMiter) Abc_NtkDelete(pMiter);
-        if (pCnf) Cnf_DataFree(pCnf);
-        if (pSat) sat_solver_delete(pSat);
+    // Abc_NtkForEachPo(pNtk, pObj, i) {
+    //   printf("Po: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj));
+    //   printf("Fanin0: %s, %d\n", Abc_ObjName(Abc_ObjFanin(pObj, 0)), Abc_ObjId(Abc_ObjFanin(pObj, 0)));
+    //   int compl0 = Abc_ObjFaninC(pObj, 0);
+    //   // // a <-> b, a + b' and a' + b
+    //   int lits[2];
+    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)], compl0 ^ 1);
+    //   lits[1] = toLitCond(ntkObjToVar[pObj], 0);
+    //   sat_solver_addclause(pSat, lits, lits + 2);
 
-        // Duplicate the original network to create the complement network
-        pComplNtk = Abc_NtkDup(pNtk);
-        Abc_Obj_t* pComplNode = Abc_NtkObj(pComplNtk, n);
-        Abc_Obj_t* pFanout;
-        Abc_ObjForEachFanout(pComplNode, pFanout, i) {
-            Abc_Obj_t* pFanin;
-            int k;
-            Abc_ObjForEachFanin(pFanout, pFanin, k) {
-                if (pFanin == pComplNode) {
-                    Abc_ObjXorFaninC(pFanout, k);
-                }
-            }
-        }
-        if (cnt == 2)
-          Aig_ManDumpBlif(Abc_NtkToDar(pNtk, 0, 0), "../ntk.blif", NULL, NULL);
-        // Create the miter network
-        pMiter = Abc_NtkMiter(pNtk, pComplNtk, 1, 0, 0, 0);
-        if (cnt == 3) {
-          Aig_ManDumpBlif(Abc_NtkToDar(pMiter, 0, 0), "../miter1.blif", NULL, NULL);
-        }
-        
+    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)], compl0);
+    //   lits[1] = toLitCond(ntkObjToVar[pObj], 1);
+    //   sat_solver_addclause(pSat, lits, lits + 2);
 
-        // Find the corresponding nodes in the miter
-        pComplNodeInMiter = NULL;
-        pNodeInMiter = NULL;
-        Abc_NtkForEachObj(pComplNtk, pObj, i) {
-            pObjCopy = pObj->pCopy;
-            if (pObjCopy && Abc_ObjId(pObj) == n) {
-                pComplNodeInMiter = pObjCopy;
-            }
-        }
-        Abc_NtkForEachObj(pNtk, pObj, i) {
-            pObjCopy = pObj->pCopy;
-            if (pObjCopy && Abc_ObjId(pObj) == n) {
-                pNodeInMiter = pObjCopy;
-            }
-        }
-        if (!pNodeInMiter || !pComplNodeInMiter) {
-            Abc_Print(-1, "Failed to find the corresponding nodes in the miter.\n");
-            return;
-        }
+    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)] + VarShift, compl0 ^ 1);
+    //   lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, 0);
+    //   sat_solver_addclause(pSat, lits, lits + 2);
 
-        // if miter's po's fanin is const1, then the node has no ODCs
-        Abc_Obj_t* pPo;
-        int j;
-        Abc_NtkForEachPo(pMiter, pPo, j) {
-            if (Abc_ObjFanin0(pPo) == Abc_AigConst1(pMiter)) {
-                Abc_Print(1, "no odc\n");
-                return;
-            }
-        }
+    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)] + VarShift, compl0);
+    //   lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, 1);
+    //   sat_solver_addclause(pSat, lits, lits + 2);
+    // }
 
-        // Derive CNF for the miter
-        pCnf = Cnf_Derive(Abc_NtkToDar(pMiter, 0, 0), 1);
-        Cnf_DataPrint(pCnf, 1);
+    Abc_NtkForEachNode(pNtk, pObj, i) {
+      int compl0 = Abc_ObjFaninC(pObj, 0);
+      int compl1 = Abc_ObjFaninC(pObj, 1);
+      Abc_Obj_t* fanin0 = Abc_ObjFanin(pObj, 0);
+      Abc_Obj_t* fanin1 = Abc_ObjFanin(pObj, 1);
+      printf("Node: %s, %d; Fanin0: %s, %d; Fanin1: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj), Abc_ObjName(fanin0), Abc_ObjId(fanin0), Abc_ObjName(fanin1), Abc_ObjId(fanin1));
+      // ab <-> c, a + c' and b + c' and a' + b' + c
+      // Add the original network
+      int lits[3];
+      lits[0] = toLitCond(ntkObjToVar[pObj], 1);
+      lits[1] = toLitCond(ntkObjToVar[fanin1], compl1);
+      sat_solver_addclause(pSat, lits, lits + 2);
 
-        // Create a SAT solver
-        
-        pSat = sat_solver_new();
-        Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
-        if (cnt == 2) {
-          Sat_SolverWriteDimacs(pSat, "../output_dimacs1", NULL, NULL, 0);
-        }
+      lits[0] = toLitCond(ntkObjToVar[fanin0], compl0);
+      lits[1] = toLitCond(ntkObjToVar[pObj], 1);
+      sat_solver_addclause(pSat, lits, lits + 2);
 
-        printf("New round %d\n", cnt);
+      lits[0] = toLitCond(ntkObjToVar[fanin0], compl0 ^ 1);
+      lits[1] = toLitCond(ntkObjToVar[fanin1], compl1 ^ 1);
+      lits[2] = toLitCond(ntkObjToVar[pObj], 0);
+      sat_solver_addclause(pSat, lits, lits + 3);
 
-        // Solve the CNF formula
-        status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
-        for (int i = 0; i < pSat->size; i++) {
-          printf("Var %d: %d\n", i, sat_solver_var_value(pSat, i));
-        }
-        fflush(stdout);
-        if (status == l_False) {
-            // UNSAT: All remaining patterns are ODCs
-            Abc_Print(1, "All patterns are ODCs after %d iterations.\n", cnt - 1);
-            break;
-        } else if (status == l_True) {
-            Aig_Man_t* pAigMiter = Abc_NtkToDar(pMiter, 0/*int fExors*/, 0/*int fRegisters*/);
-            Aig_Obj_t* pObj;
-            int iObj;
-            Aig_ManForEachCi(pAigMiter, pObj, iObj){
-                printf("CI %d: %d\n", pObj->Id, sat_solver_var_value(pSat, pCnf->pVarNums[pObj->Id]));
-            }
-            fflush(stdout);
-            Aig_Obj_t * pAigObj;
-            int v;
+      // Add the complement network
+      if (Abc_ObjId(fanin0) == n) {
+        // complement the fanin0
+        printf("complement the fanin0\n");
+        compl0 = compl0 ^ 1;
+      } else if (Abc_ObjId(fanin1) == n) {
+        // complement the fanin1
+        printf("complement the fanin1\n");
+        compl1 = compl1 ^ 1;
+      } 
+      lits[0] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 0 : 1);
+      lits[1] = toLitCond(ntkObjToVar[fanin1] + VarShift, compl1);
+      sat_solver_addclause(pSat, lits, lits + 2);
 
-            // printf("%d %d\n", pCnf->pVarNums[Abc_ObjFanin0(pNodeInMiter)->Id], pCnf->pVarNums[Abc_ObjFanin1(pNodeInMiter)->Id]);
-            // SAT: Retrieve the satisfying assignment
-            int v0, v1, n0, n1;
-            printf("%d %s\n", pNodeInMiter->Id, Abc_ObjName(pNodeInMiter));
-            fflush(stdout);
-            v0 = ComputeNodeValue(Abc_ObjFanin0(pNodeInMiter), pCnf, pSat);
-            v1 = ComputeNodeValue(Abc_ObjFanin1(pNodeInMiter), pCnf, pSat);
-            // n0 = v0, n1 = v1;
-            // // Account for inversion in the fanins
-            if (Abc_ObjFaninC0(pNodeInMiter)) {
-                n0 = !v0;
-            } else {
-                n0 = v0;
-            }
-            if (Abc_ObjFaninC1(pNodeInMiter)) {
-                n1 = !v1;
-            } else {
-                n1 = v1;
-            }
-            // printf("Fanin values: %d %d\n", v0, v1);
-            printf("Node %d: %d %d\n", n, n0, n1);
-            printf("Fanin Nodes: %d %d\n", Abc_ObjFaninId(pNodeInMiter, 0), Abc_ObjFaninId(pNodeInMiter, 1));
-            fflush(stdout);
-            // Output PI assignments
-            printf("PI assignments:\n");
-            Abc_Obj_t* pPi;
-            int j;
-            Abc_NtkForEachPi(pMiter, pPi, j) {
-                int varNum = pCnf->pVarNums[Abc_ObjId(pPi)];
-                if (varNum >= 0) {
-                    int value = sat_solver_var_value(pSat, varNum);
-                    printf("PI %d (ID %d) %d: %d\n", j, Abc_ObjId(pPi), pCnf->pVarNums[Abc_ObjId(pPi)], value);
-                } else {
-                    printf("PI %d (ID %d): Variable number not found.\n", j, Abc_ObjId(pPi));
-                }
-            }
+      lits[0] = toLitCond(ntkObjToVar[fanin0] + VarShift, compl0);
+      lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 0 : 1);
+      sat_solver_addclause(pSat, lits, lits + 2);
 
-            // Modify the original network to include the blocking clause
-            // if n0 == 0, then y0 xor n0 -> y0 xor 0 -> !y0*0 + y0*1 -> y0
-            // if n0 == 1, then y0 xor n0 -> y0 xor 1 -> !y0*1 + y0*0 -> !y0
-            Abc_Aig_t* pAig = (Abc_Aig_t*)pNtk->pManFunc;
-            Abc_Obj_t* pBlockingFunction = NULL;
-
-            Abc_Obj_t* pFanin0 = Abc_ObjFanin0(Abc_NtkObj(pNtk, n));
-            Abc_Obj_t* pFanin1 = Abc_ObjFanin1(Abc_NtkObj(pNtk, n));
-            printf("Fanin0: %d, Fanin1: %d\n", Abc_ObjId(pFanin0), Abc_ObjId(pFanin1));
-
-            // Build the blocking function
-            Abc_Obj_t* pVar0 = (n0 == 1) ? pFanin0 : Abc_ObjNot(pFanin0);
-            Abc_Obj_t* pVar1 = (n1 == 1) ? pFanin1 : Abc_ObjNot(pFanin1);
-            pBlockingFunction = Abc_AigAnd((Abc_Aig_t*)pNtk->pManFunc, pVar0, pVar1);
-
-            // Add the blocking function to the original network's primary outputs
-            Abc_Obj_t* pPo;
-            Abc_NtkForEachPo(pNtk, pPo, j) {
-                Abc_Obj_t* pPoFanin = Abc_ObjFanin0(pPo);
-                Abc_Obj_t* pNewPoFanin = Abc_AigAnd(pAig, pPoFanin, Abc_ObjNot(pBlockingFunction));
-                Abc_ObjPatchFanin(pPo, pPoFanin, pNewPoFanin);
-            }
-
-            // Continue to the next iteration, the networks will be regenerated
-        } else {
-            // Undefined status
-            Abc_Print(1, "SAT solver returned undefined status.\n");
-            break;
-        }
+      lits[0] = toLitCond(ntkObjToVar[fanin0] + VarShift, compl0 ^ 1);
+      lits[1] = toLitCond(ntkObjToVar[fanin1] + VarShift, compl1 ^ 1);
+      lits[2] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 1 : 0);
+      sat_solver_addclause(pSat, lits, lits + 3);
     }
 
-    // Clean up
-    if (pComplNtk) Abc_NtkDelete(pComplNtk);
-    if (pMiter) Abc_NtkDelete(pMiter);
-    if (pCnf) Cnf_DataFree(pCnf);
-    if (pSat) sat_solver_delete(pSat);
+    // Add the miter clause
+    // a xor b <-> (a' or b') and (a or b)
+    #define xorFanout VarShift * 2
+    #define orPo VarShift * 3
+    std::map<Abc_Obj_t*, int> xorFanoutToVar;
+    Abc_Obj_t* pPo;
+    Abc_NtkForEachPo(pNtk, pPo, i) {
+      printf("Po: %s, %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo));
+      int lits[3];
+      // 0 0 -> 0, 1 1 -> 0, 0 1 -> 1, 1 0 -> 1
+      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 0);
+      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 0);
+      lits[2] = toLitCond(xorFanout, 1);
+      sat_solver_addclause(pSat, lits, lits + 2);
+
+      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 1);
+      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 1);
+      lits[2] = toLitCond(xorFanout, 1);
+      sat_solver_addclause(pSat, lits, lits + 2);
+
+      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 0);
+      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 1);
+      lits[2] = toLitCond(xorFanout, 0);
+      sat_solver_addclause(pSat, lits, lits + 2);
+
+      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 1);
+      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 0);
+      lits[2] = toLitCond(xorFanout, 0);
+      sat_solver_addclause(pSat, lits, lits + 2);
+
+      // idicates the miter clause in the network
+      xorFanoutToVar[pPo] = xorFanout + i;
+      ntkPoToVar[pPo] = ntkObjToVar[pPo];
+    }
+
+    // Abc_NtkForEachPo(pNtk, pPo, i) {
+    //   int lits[2];
+    //   // not xorfanout or po, if any xorfanout is 0, then po is 1
+    //   lits[0] = toLitCond(xorFanoutToVar[pPo], 1);
+    //   lits[1] = toLitCond(orPo, 0);
+    //   sat_solver_addclause(pSat, lits, lits + 2);
+    // }
+
+    int* lits = new int[(int)xorFanoutToVar.size()+1];
+    lits[0] = toLitCond(orPo, 1);
+    Abc_NtkForEachPo(pNtk, pPo, i) {
+      printf("Po: %s, %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo));
+      lits[i+1] = toLitCond(xorFanoutToVar[pPo], 0);
+    }
+    sat_solver_addclause(pSat, lits, lits + xorFanoutToVar.size()+1);
+
+    // Po must be 1
+    lits[0] = toLitCond(orPo, 0);
+    sat_solver_addclause(pSat, lits, lits + 1);
+
+    Sat_SolverWriteDimacs(pSat, "../output_dimacs1", NULL, NULL, 0);
+
+    // iterate all variables
+    // for (const auto &p : ntkObjToVar) {
+    //   printf("Var: %d, %s\n", p.second, Abc_ObjName(p.first));
+    // }
+
+    // Solve the CNF formula
+    int status;
+    i = 0;
+    do {
+      status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+      if (status == l_False) {
+        printf("l_False\n");
+      } else if (status == l_True) {
+        printf("l_True\n");
+        for (int i = 0; i < pSat->size; ++i) {
+          if (ntkVarToObj.find(i) != ntkVarToObj.end()) {
+            printf("Name: %s, %d\n", Abc_ObjName(ntkVarToObj[i]), sat_solver_var_value(pSat, i));
+          } else {
+            printf("Var: %d, %d\n", i, sat_solver_var_value(pSat, i));
+          }
+          fflush(stdout);
+        }
+        // block the assignment
+        int var0 = ntkObjToVar[Abc_ObjFanin0(Abc_NtkObj(pNtk, n))];
+        int var1 = ntkObjToVar[Abc_ObjFanin1(Abc_NtkObj(pNtk, n))];
+        int n0 = sat_solver_var_value(pSat, var0);
+        int n1 = sat_solver_var_value(pSat, var1);
+        printf("Block: %d %d, %d %d\n", var0, var1, n0, n1);
+
+        // if n0 == 0, then y0 xor n0 -> y0 xor 0 -> !y0*0 + y0*1 -> y0
+        // if n0 == 1, then y0 xor n0 -> y0 xor 1 -> !y0*1 + y0*0 -> !y0
+        // 0, 1 -> y0 + !y1
+        int lits[2];
+        lits[0] = toLitCond(var0, n0);
+        lits[1] = toLitCond(var1, n1);
+        sat_solver_addclause(pSat, lits, lits + 2);
+        if (i == 0)
+          Sat_SolverWriteDimacs(pSat, "../output_dimacs2", NULL, NULL, 0);
+        // break;
+      } else {
+        // Undefined status
+        printf("SAT solver returned undefined status.\n");
+      }
+    } while (status == l_True && ++i < 4);
 }
 
 
