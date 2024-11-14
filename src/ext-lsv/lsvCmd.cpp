@@ -430,6 +430,47 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 }
 
+// 递归函数：计算节点的值
+int ComputeNodeValue(Abc_Obj_t* pNode, Cnf_Dat_t* pCnf, sat_solver* pSat) {
+    int varNum = pCnf->pVarNums[Abc_ObjId(pNode)];
+    printf("Node %d, varNum %d\n", Abc_ObjId(pNode), varNum);
+    fflush(stdout);
+    if (Abc_ObjIsPi(pNode)) {
+        // PI 节点应该有变量号
+        varNum = pCnf->pVarNums[Abc_ObjId(pNode)];
+        if (varNum >= 0) {
+            return sat_solver_var_value(pSat, varNum);
+        } else {
+            printf("Error: PI node with no variable number.\n");
+            return -1;
+        }
+    } else if (Abc_AigNodeIsConst(pNode)) {
+        return 1;
+    } else if (Abc_ObjIsNode(pNode)) {
+        // 内部节点，递归计算其 Fanin 的值
+        int value0 = ComputeNodeValue(Abc_ObjFanin0(pNode), pCnf, pSat);
+        int value1 = ComputeNodeValue(Abc_ObjFanin1(pNode), pCnf, pSat);
+
+        if (value0 == -1 || value1 == -1) {
+            printf("Error: Unable to compute value for node %d.\n", Abc_ObjId(pNode));
+            return -1;
+        }
+
+        // 处理反向（Complemented）边
+        int isCompl0 = Abc_ObjFaninC0(pNode);
+        int isCompl1 = Abc_ObjFaninC1(pNode);
+        int val0 = isCompl0 ? !value0 : value0;
+        int val1 = isCompl1 ? !value1 : value1;
+
+        // AIG 中的节点表示 AND 门
+        printf("Node %d, %d %d\n", Abc_ObjId(pNode), val0, val1);
+        return val0 & val1;
+    } else {
+        printf("Error: Unsupported node type (ID %d).\n", Abc_ObjId(pNode));
+        return -1;
+    }
+}
+
 // TODO PA2 Q2
 void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
     Abc_Ntk_t* pComplNtk = NULL;
