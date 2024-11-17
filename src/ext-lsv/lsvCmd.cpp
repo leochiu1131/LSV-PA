@@ -198,11 +198,10 @@ int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv) {
 }
 
 // TODO PA2 Q1
-void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
+std::vector<std::pair<int, int>> Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n, int ret = 0) {
   Abc_Obj_t* pNode = Abc_NtkObj(pNtk, n);
   if (!pNode) {
     Abc_Print(-1, "Node not found.\n");
-    return;
   }
   //extract the cone of yk.
   // 1 (true): Use all CIs from the original network.
@@ -210,7 +209,6 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
   Abc_Ntk_t* pConeNtk = Abc_NtkCreateCone(pNtk, pNode, "Cone_for_target_node", 0);
   if (!pConeNtk) {
     Abc_Print(-1, "Failed to create cone network.\n");
-    return;
   }
 
   // print the cone network
@@ -222,7 +220,6 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
     if (!pSimMan) {
         Abc_Print(-1, "Failed to start simulation manager.\n");
         Abc_NtkDelete(pConeNtk);
-        return;
     }
 
     // Set up random simulation patterns for the PIs
@@ -304,6 +301,7 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
     }
 
     // Print the missing patterns
+    std::vector<std::pair<int, int>> dontCareSet;
     std::vector<std::vector<int>> missing_patterns;
     if (found[0] && found[1] && found[2] && found[3]) {
       Abc_Print(1, "no sdc\n");
@@ -380,7 +378,9 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
         if (status == l_False) {
           // UNSAT: (v0, v1) is an SDC of n in terms of y0, y1
           // printf("(%d, %d) is an SDC of n in terms of y0, y1.\n", v0, v1);
-          printf("%d%d\n", v0, v1);
+          if (ret == 0)
+            printf("%d%d\n", v0, v1);
+          dontCareSet.push_back({v0, v1});
           flag = 1;
         } else if (status == l_True) {
           // SAT: (v0, v1) is not an SDC
@@ -407,7 +407,7 @@ void Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n) {
     if ( p->vDiffs )       Vec_IntFree( p->vDiffs );
     ABC_FREE( p );
     Abc_NtkDelete(pConeNtk);
-
+    return dontCareSet;
 }
 
 int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
@@ -450,43 +450,55 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
 
     // Create sat solver
     sat_solver* pSat = sat_solver_new();
-    std::map<Abc_Obj_t*, int> ntkObjToVar, ntkPoToVar;
+    std::map<Abc_Obj_t*, int> ntkObjToVar, ntkPoToVar, ntkComplObjToVar;
     std::map<int, Abc_Obj_t*> ntkVarToObj;
 
     // Create the CNF formula for the original network
     Abc_Obj_t* pObj;
     int i;
-    Abc_NtkForEachObj(pNtk, pObj, i) {
-      printf("Node: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj));
-      ntkObjToVar[pObj] = i;
-      ntkVarToObj[i] = pObj;
+    int totalVars = 0;
+    Abc_NtkForEachPi(pNtk, pObj, i) {
+      ntkObjToVar[pObj] = totalVars;
+      ntkVarToObj[totalVars] = pObj;
+      ntkComplObjToVar[pObj] = totalVars;
+      totalVars += 1;
     }
-    int VarShift = ntkObjToVar.size();
-
-    // Abc_NtkForEachPo(pNtk, pObj, i) {
-    //   printf("Po: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj));
-    //   printf("Fanin0: %s, %d\n", Abc_ObjName(Abc_ObjFanin(pObj, 0)), Abc_ObjId(Abc_ObjFanin(pObj, 0)));
-    //   int compl0 = Abc_ObjFaninC(pObj, 0);
-    //   // // a <-> b, a + b' and a' + b
+    Abc_NtkForEachNode(pNtk, pObj, i) {
+      ntkObjToVar[pObj] = totalVars;
+      ntkVarToObj[totalVars] = pObj;
+      ntkComplObjToVar[pObj] = totalVars + 1;
+      totalVars += 2;
+    }
+    // Abc_NtkForEachObj(pNtk, pObj, i) {
+    //   if (Abc_ObjIsPo(pObj))
+    //     continue;
+    //   ntkObjToVar[pObj] = totalVars;
+    //   ntkVarToObj[totalVars] = pObj;
+    //   totalVars++;
+    // }
+    // Abc_NtkForEachObj(pNtk, pObj, i) {
+    //   if (Abc_ObjIsPo(pObj))
+    //     continue;
+    //   ntkComplObjToVar[pObj] = totalVars;
+    //   ntkVarToObj[totalVars] = pObj;
+    //   totalVars++;
+    // }
+    // // PI must be the same
+    // Abc_NtkForEachPi(pNtk, pObj, i) {
     //   int lits[2];
-    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)], compl0 ^ 1);
-    //   lits[1] = toLitCond(ntkObjToVar[pObj], 0);
+    //   lits[0] = toLitCond(ntkObjToVar[pObj], 0);
+    //   lits[1] = toLitCond(ntkComplObjToVar[pObj], 1);
     //   sat_solver_addclause(pSat, lits, lits + 2);
 
-    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)], compl0);
-    //   lits[1] = toLitCond(ntkObjToVar[pObj], 1);
-    //   sat_solver_addclause(pSat, lits, lits + 2);
-
-    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)] + VarShift, compl0 ^ 1);
-    //   lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, 0);
-    //   sat_solver_addclause(pSat, lits, lits + 2);
-
-    //   lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin(pObj, 0)] + VarShift, compl0);
-    //   lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, 1);
+    //   lits[0] = toLitCond(ntkObjToVar[pObj], 1);
+    //   lits[1] = toLitCond(ntkComplObjToVar[pObj], 0);
     //   sat_solver_addclause(pSat, lits, lits + 2);
     // }
 
     Abc_NtkForEachNode(pNtk, pObj, i) {
+      if (Abc_ObjIsCi(pObj))
+        continue;
+
       int compl0 = Abc_ObjFaninC(pObj, 0);
       int compl1 = Abc_ObjFaninC(pObj, 1);
       Abc_Obj_t* fanin0 = Abc_ObjFanin(pObj, 0);
@@ -499,6 +511,7 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       lits[1] = toLitCond(ntkObjToVar[fanin1], compl1);
       sat_solver_addclause(pSat, lits, lits + 2);
 
+
       lits[0] = toLitCond(ntkObjToVar[fanin0], compl0);
       lits[1] = toLitCond(ntkObjToVar[pObj], 1);
       sat_solver_addclause(pSat, lits, lits + 2);
@@ -509,76 +522,110 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       sat_solver_addclause(pSat, lits, lits + 3);
 
       // Add the complement network
-      if (Abc_ObjId(fanin0) == n) {
-        // complement the fanin0
-        printf("complement the fanin0\n");
-        compl0 = compl0 ^ 1;
-      } else if (Abc_ObjId(fanin1) == n) {
-        // complement the fanin1
-        printf("complement the fanin1\n");
-        compl1 = compl1 ^ 1;
-      } 
-      lits[0] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 0 : 1);
-      lits[1] = toLitCond(ntkObjToVar[fanin1] + VarShift, compl1);
+      // if (Abc_ObjId(fanin0) == n) {
+      //   // complement the fanin0
+      //   printf("complement the fanin0\n");
+      //   compl0 = compl0 ^ 1;
+      // } else if (Abc_ObjId(fanin1) == n) {
+      //   // complement the fanin1
+      //   printf("complement the fanin1\n");
+      //   compl1 = compl1 ^ 1;
+      // } 
+      lits[0] = toLitCond(ntkComplObjToVar[pObj], Abc_ObjId(pObj) == n ? 0 : 1);
+      lits[1] = toLitCond(ntkComplObjToVar[fanin1], compl1);
       sat_solver_addclause(pSat, lits, lits + 2);
 
-      lits[0] = toLitCond(ntkObjToVar[fanin0] + VarShift, compl0);
-      lits[1] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 0 : 1);
+      lits[0] = toLitCond(ntkComplObjToVar[fanin0], compl0);
+      lits[1] = toLitCond(ntkComplObjToVar[pObj], Abc_ObjId(pObj) == n ? 0 : 1);
       sat_solver_addclause(pSat, lits, lits + 2);
 
-      lits[0] = toLitCond(ntkObjToVar[fanin0] + VarShift, compl0 ^ 1);
-      lits[1] = toLitCond(ntkObjToVar[fanin1] + VarShift, compl1 ^ 1);
-      lits[2] = toLitCond(ntkObjToVar[pObj] + VarShift, Abc_ObjId(pObj) == n ? 1 : 0);
+      lits[0] = toLitCond(ntkComplObjToVar[fanin0], compl0 ^ 1);
+      lits[1] = toLitCond(ntkComplObjToVar[fanin1], compl1 ^ 1);
+      lits[2] = toLitCond(ntkComplObjToVar[pObj], Abc_ObjId(pObj) == n ? 1 : 0);
       sat_solver_addclause(pSat, lits, lits + 3);
     }
 
     // Add the miter clause
-    // a xor b <-> (a' or b') and (a or b)
-    #define xorFanout VarShift * 2
-    #define orPo VarShift * 3
+    // a + b + c' and a' + b' + c' and a' + b + c and a + b' + c
+    // a xor b -> c <-> not ( a'b + ab' ) + c <-> (a + b') (a' + b) + c <-> ab + a'b' + c <-> (a' + b + c) (a + b' + c)
+    //    0 1
+    // 00 1 0
+    // 01 0 1 
+    // 11 1 1
+    // 10 1 1
+    // c -> a xor b <-> c' + a'b + ab' <-> (a + b + c') (a' + b' + c')
+    //    0 1
+    // 00 1 1
+    // 01 0 1 
+    // 11 1 0  
+    // 10 1 1
     std::map<Abc_Obj_t*, int> xorFanoutToVar;
     Abc_Obj_t* pPo;
     Abc_NtkForEachPo(pNtk, pPo, i) {
-      printf("Po: %s, %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo));
+      int xorFanout = totalVars;
+      int fanin0 = ntkObjToVar[Abc_ObjFanin0(pPo)];
+      int fanin1 = ntkComplObjToVar[Abc_ObjFanin0(pPo)];
+      int fanout = xorFanout;
+      printf("Po: %s, %d; XorFanout: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanout);
+      printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkObjToVar[Abc_ObjFanin0(pPo)]);
+      printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkComplObjToVar[Abc_ObjFanin0(pPo)]);
+      // int compl0 = Abc_ObjFaninC(pPo, 0);
+      // int compl1 = Abc_ObjFaninC(pPo, 0);
+      // if (Abc_ObjId(Abc_ObjFanin0(pPo)) == n) {
+      //   compl1 = compl1 ^ 1;
+      // }
       int lits[3];
       // 0 0 -> 0, 1 1 -> 0, 0 1 -> 1, 1 0 -> 1
-      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 0);
-      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 0);
+      lits[0] = toLitCond(fanin0, 0);
+      lits[1] = toLitCond(fanin1, 0);
       lits[2] = toLitCond(xorFanout, 1);
-      sat_solver_addclause(pSat, lits, lits + 2);
+      sat_solver_addclause(pSat, lits, lits + 3);
 
-      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 1);
-      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 1);
+      lits[0] = toLitCond(fanin0, 1);
+      lits[1] = toLitCond(fanin1, 1);
       lits[2] = toLitCond(xorFanout, 1);
-      sat_solver_addclause(pSat, lits, lits + 2);
+      sat_solver_addclause(pSat, lits, lits + 3);
 
-      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 0);
-      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 1);
+      lits[0] = toLitCond(fanin0, 0);
+      lits[1] = toLitCond(fanin1, 1);
       lits[2] = toLitCond(xorFanout, 0);
-      sat_solver_addclause(pSat, lits, lits + 2);
+      sat_solver_addclause(pSat, lits, lits + 3);
 
-      lits[0] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)], 1);
-      lits[1] = toLitCond(ntkObjToVar[Abc_ObjFanin0(pPo)] + VarShift, 0);
+      lits[0] = toLitCond(fanin0, 1);
+      lits[1] = toLitCond(fanin1, 0);
       lits[2] = toLitCond(xorFanout, 0);
-      sat_solver_addclause(pSat, lits, lits + 2);
+      sat_solver_addclause(pSat, lits, lits + 3);
 
       // idicates the miter clause in the network
-      xorFanoutToVar[pPo] = xorFanout + i;
+      xorFanoutToVar[pPo] = xorFanout;
       ntkPoToVar[pPo] = ntkObjToVar[pPo];
+      totalVars++;
     }
 
-    // Abc_NtkForEachPo(pNtk, pPo, i) {
-    //   int lits[2];
-    //   // not xorfanout or po, if any xorfanout is 0, then po is 1
-    //   lits[0] = toLitCond(xorFanoutToVar[pPo], 1);
-    //   lits[1] = toLitCond(orPo, 0);
-    //   sat_solver_addclause(pSat, lits, lits + 2);
-    // }
+    // int lits[1];
+    // lits[0] = toLitCond(totalVars-1, 0);
+    // sat_solver_addclause(pSat, lits, lits + 1);
 
+    int orPo = totalVars;
+    totalVars++;
+    // a + b -> c <-> a'b' + c <-> (a' + b + c) (a' + b + c')
+    //    0 1
+    // 00 1 0
+    // 01 1 0 
+    // 11 1 1  
+    // 10 1 1
+    Abc_NtkForEachPo(pNtk, pPo, i) {
+      int lits[2];
+      // not xorfanout or po, if any xorfanout is 1, then po is 1
+      lits[0] = toLitCond(xorFanoutToVar[pPo], 1);
+      lits[1] = toLitCond(orPo, 0);
+      sat_solver_addclause(pSat, lits, lits + 2);
+    }
+    printf("xorFanoutToVar size: %ld \n", xorFanoutToVar.size());
     int* lits = new int[(int)xorFanoutToVar.size()+1];
     lits[0] = toLitCond(orPo, 1);
     Abc_NtkForEachPo(pNtk, pPo, i) {
-      printf("Po: %s, %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo));
+      printf("Po: %s, %d, FanoutVar: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanoutToVar[pPo]);
       lits[i+1] = toLitCond(xorFanoutToVar[pPo], 0);
     }
     sat_solver_addclause(pSat, lits, lits + xorFanoutToVar.size()+1);
@@ -595,12 +642,30 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
     // }
 
     // Solve the CNF formula
+    std::vector<std::pair<int, int>> odcPatterns;
+    std::vector<std::pair<int, int>> careSet;
     int status;
     i = 0;
     do {
       status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
       if (status == l_False) {
-        printf("l_False\n");
+        std::vector<std::pair<int, int>> sdcSet = Lsv_NtkFindSDC(pNtk, n, 1);
+        
+        int compl0 = Abc_ObjFaninC(Abc_NtkObj(pNtk, n), 0);
+        int compl1 = Abc_ObjFaninC(Abc_NtkObj(pNtk, n), 1);
+        for (int i = 0; i < careSet.size(); i++) {
+          if (compl0)
+            careSet[i].first = careSet[i].first ^ 1;
+          if (compl1)
+            careSet[i].second = careSet[i].second ^ 1;
+        }
+
+        std::vector<std::pair<int, int>> allPatterns = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+        for (const auto& pattern : allPatterns) {
+          if (std::find(sdcSet.begin(), sdcSet.end(), pattern) == sdcSet.end() && std::find(careSet.begin(), careSet.end(), pattern) == careSet.end()) {
+            odcPatterns.push_back(pattern);
+          }
+        }
       } else if (status == l_True) {
         printf("l_True\n");
         for (int i = 0; i < pSat->size; ++i) {
@@ -624,15 +689,29 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
         int lits[2];
         lits[0] = toLitCond(var0, n0);
         lits[1] = toLitCond(var1, n1);
-        sat_solver_addclause(pSat, lits, lits + 2);
+        int ret = sat_solver_addclause(pSat, lits, lits + 2);
         if (i == 0)
           Sat_SolverWriteDimacs(pSat, "../output_dimacs2", NULL, NULL, 0);
-        // break;
+        if (ret ==  0) {
+          printf("Failed to add blocking clause.\n");
+          break;
+        } 
+        careSet.push_back({n0, n1});
       } else {
         // Undefined status
         printf("SAT solver returned undefined status.\n");
       }
-    } while (status == l_True && ++i < 4);
+    } while (status == l_True);
+
+    if (odcPatterns.size() == 0) {
+      printf("no odc\n");
+    } else {
+      for (const auto& pattern : odcPatterns) {
+        printf("%d%d ", pattern.first, pattern.second);
+      }
+      printf("\n");
+    }
+    
 }
 
 
