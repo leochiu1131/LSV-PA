@@ -259,7 +259,12 @@ vector<pair<bool,bool>> Lsv_findSdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     
     // Step 1: Random simulation
     set<pair<bool,bool>> simulated_patterns;
-    const int num_sim = 100;
+    const int num_sim = 10;
+    
+    // Collect fanin cone first
+    set<Abc_Obj_t*> cone_nodes;
+    collect_fanin_cone(y0, cone_nodes);
+    collect_fanin_cone(y1, cone_nodes);
     
     for(int i = 0; i < num_sim; i++) {
         map<int, bool> sim_values;
@@ -271,8 +276,8 @@ vector<pair<bool,bool>> Lsv_findSdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             sim_values[Abc_ObjId(pObj)] = rand() % 2;
         }
         
-        // Simulate network
-        Abc_NtkForEachNode(pNtk, pObj, j) {
+        // Only simulate nodes in the fanin cone
+        for(auto pObj : cone_nodes) {
             simulate_node(pObj, sim_values);
         }
         
@@ -285,11 +290,6 @@ vector<pair<bool,bool>> Lsv_findSdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     // Step 2: SAT check for unsimulated patterns
     vector<pair<bool,bool>> sdc_patterns;
     vector<pair<bool,bool>> all_patterns = {{0,0},{0,1},{1,0},{1,1}};
-    
-    // Collect fanin cone
-    set<Abc_Obj_t*> cone_nodes;
-    collect_fanin_cone(y0, cone_nodes);
-    collect_fanin_cone(y1, cone_nodes);
     
     for(auto pattern : all_patterns) {
         if(simulated_patterns.count(pattern)) continue;
