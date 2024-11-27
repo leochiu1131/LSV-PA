@@ -1,0 +1,15 @@
+.model TESTING_AIG
+.inputs x0 x1 
+.outputs y0
+.names x0 x1 A
+00 1
+01 1
+10 1
+.names x0 x1 B
+00 1
+11 1
+10 1
+.names A B y0
+10 1
+01 1
+.end
