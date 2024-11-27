@@ -1,33 +1,21 @@
 #include <iostream>
-#include <set>
-#include <map>
-#include <vector>
-#include <algorithm>
-#include <bits/stdc++.h>
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
-
-class CutSet{
-  CutSet(std::set<Abc_Obj_t *> Cset): 
-    cset(std::make_pair(Cset.size(), Cset)){};
-  public:
-    std::pair<int, std::set<Abc_Obj_t *>> cset;
-};
-
-class SortSet{
-  public:
-    bool operator()(const std::set<Abc_Obj_t *> a, const std::set<Abc_Obj_t *> b) const {
-      return a.size() <b.size();
-    }
-};
+#include "sat/cnf/cnf.h"
+extern "C"{
+    Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
+using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
-static int Lsv_CommandPrintCuts(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandPrintSDC(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandPrintODC(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCuts, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandPrintSDC, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandPrintODC, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -38,285 +26,150 @@ struct PackageRegistrationManager {
   PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer); }
 } lsvPackageRegistrationManager;
 
+void CreateCnfForFaninNodes(Abc_Ntk_t * pNtk, int n, Cnf_Dat_t ** ppCnf, sat_solver ** ppSolver, int * pVarY0, int * pVarY1) {
+    // 獲取目標節點A及其fanin節點y0和y1
+    Abc_Obj_t * pNodeA = Abc_NtkObj(pNtk, n);
+    Abc_Obj_t * pFanin0 = Abc_ObjFanin0(pNodeA);
+    Abc_Obj_t * pFanin1 = Abc_ObjFanin1(pNodeA);
 
-// bool operator < (const std::set<Abc_Obj_t*> a, const std::set<Abc_Obj_t*> b){
-//   return a.size() <= b.size();
-// }
+    // 創建一個指針向量來存儲y0和y1
+    Vec_Ptr_t * vNodes = Vec_PtrAlloc(2);
+    Vec_PtrPush(vNodes, pFanin0);
+    Vec_PtrPush(vNodes, pFanin1);
+    // cout<<pNodeA->Id<<" : "<<pFanin0->Id<<" "<<pFanin1->Id<<endl;
 
-void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k_value) {
-  Abc_Obj_t* pObj;
-  std::map<Abc_Obj_t*, std::set<std::set<Abc_Obj_t*>/*, SortSet*/>> Obj2cut;
+    // 創建包含y0和y1的傳遞扇入錐
+    Abc_Ntk_t * pConeNtk = Abc_NtkCreateConeArray(pNtk, vNodes, 1);
+    Vec_PtrFree(vNodes);
 
-  for (int i = 0; (i < Vec_PtrSize((pNtk)->vObjs)) && (((pObj) = Abc_NtkObj(pNtk, i)), 1); i++ ){   \
-    if (pObj == NULL)  continue;
-    if (!Abc_ObjIsNode(pObj)){
-      if (Abc_ObjFaninNum(pObj)) continue;
+    // 將傳遞扇入錐轉換為AIG
+    Aig_Man_t * pAig = Abc_NtkToDar(pConeNtk, 0, 0);
 
-        // Abc_Print(-2, " * Fan ");
-        std::set<Abc_Obj_t*> tmpcut{pObj};
-        Obj2cut[pObj].insert(tmpcut);
+    // 導出CNF，這裡假設只有一個輸出
+    *ppCnf = Cnf_Derive(pAig, 2);
 
-    }else{
-      Abc_Obj_t* pFanin;
-      int t;
-      std::vector<std::set<std::set<Abc_Obj_t*>>> Inset;
-      Abc_ObjForEachFanin(pObj, pFanin, t) {
-        Inset.push_back(Obj2cut[pFanin]);
-      }
-      if(Inset.size()>2){ Abc_Print(-2,"ERROR"); return; }
-      else if(Inset.size()==1){
-        Abc_Print(-2, Abc_ObjName(pObj));
-        Abc_Print(-2, " is special\n");
-        Obj2cut[pObj] = Inset[0];
-      }else{
-        std::set<Abc_Obj_t*> tmpcut{pObj};
-        Obj2cut[pObj].insert(tmpcut);
-        
-        // printf("%s: %d, %d \n", Abc_ObjName(pObj), Inset[0].size(), Inset[1].size());
-        for(const auto &s1 : Inset[0]){
+    // 初始化SAT求解器
+    *ppSolver = sat_solver_new();
 
-          // Abc_Print(-2,"*s1 (");
-          // for(const auto &s : s1){
-          //   Abc_Print(-2, Abc_ObjName(s));
-          //   Abc_Print(-2, ", ");
-          // }
-          // Abc_Print(-2,")\n");
+    // 將CNF寫入求解器
+    Cnf_DataWriteIntoSolver(*ppCnf, 1, 0);
 
-          for(const auto &s2 : Inset[1]){
+    // 獲取y0和y1的變量索引
+    *pVarY0 = (*ppCnf)->pVarNums[Aig_ObjId(Aig_ManCo(pAig, 0))];
+    *pVarY1 = (*ppCnf)->pVarNums[Aig_ObjId(Aig_ManCo(pAig, 1))];
 
-            // Abc_Print(-2," s2 (");
-            // for(const auto &s : s2){
-            //   Abc_Print(-2, Abc_ObjName(s));
-            //   Abc_Print(-2, ", ");
-            // }
-            // Abc_Print(-2,")---");
-
-            std::set<Abc_Obj_t*> tmpcut2;
-            tmpcut2.insert(s1.begin(), s1.end());
-            tmpcut2.insert(s2.begin(), s2.end());
-
-            // Abc_Print(-2,"add (");
-            // for(const auto &s : tmpcut2){
-            //   Abc_Print(-2, Abc_ObjName(s));
-            //   Abc_Print(-2, ", ");
-            // }
-            // Abc_Print(-2,")\n");
-
-            if(tmpcut2.size() > k_value) continue;
-            else Obj2cut[pObj].insert(tmpcut2);
-          }
-          // Abc_Print(-2,"\n");
-        }
-
-        // for(const auto &cut : Obj2cut[pObj]){
-        //   Abc_Print(-2,"(");
-        //   for(const auto &s : cut){
-        //     Abc_Print(-2, Abc_ObjName(s));
-        //     Abc_Print(-2, ", ");
-        //   }
-        //   Abc_Print(-2,"), ");
-        // }
-        // Abc_Print(-2, "\n");
-
-
-        // for(std::set<std::set<Abc_Obj_t*>>::iterator si = Obj2cut[pObj].begin(); si != Obj2cut[pObj].end(); si++){
-        //   for (std::set<std::set<Abc_Obj_t*>>::iterator sj = si; sj != Obj2cut[pObj].end(); sj++) {
-        //     if(si==sj) continue;
-        //     if(std::includes((*sj).begin(), (*sj).end(), (*si).begin(), (*si).end())){
-        //       Obj2cut[pObj].erase(*si);
-        //     }
-        //   }
-        // }
-
-
-        bool swap_tag;
-        std::vector<std::set<Abc_Obj_t*>> del;
-        // std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> s1, s2;
-        for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> si = Obj2cut[pObj].rbegin(); si != Obj2cut[pObj].rend(); si++){
-          // Abc_Print(-2,"(");
-          // for(const auto &s : *si){
-          //   Abc_Print(-2, Abc_ObjName(s));
-          //   Abc_Print(-2, ", ");
-          // }
-          // Abc_Print(-2,"), ");
-          for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> sj = si; sj != Obj2cut[pObj].rend(); sj++) {
-            if(si==sj) continue;
-            swap_tag = 0;
-            if((*si).size()<(*sj).size()){
-              std::swap(si, sj);
-              swap_tag = 1;
-            }
-            if(std::includes((*si).begin(), (*si).end(), (*sj).begin(), (*sj).end())){
-              // auto k0 = Obj2cut[pObj].find(*si);
-              // std::set<Abc_Obj_t*> del;
-              // del.insert((*si).begin(), (*si).end());
-              del.push_back(*si);
-
-              // auto k = Obj2cut[pObj].erase(*si);
-              
-              // printf(" %d ", k);
-              // Abc_Print(-2,"delete! // ");
-              if(swap_tag){
-                std::swap(si, sj);
-                swap_tag = 0;
-              }
-              continue;
-            }
-            if(swap_tag)
-                std::swap(si, sj);
-          }
-        }
-        // Abc_Print(-2,"\n");
-        for(auto d : del){
-          auto k = Obj2cut[pObj].erase(d);
-          // printf("delete %d ", k);
-        }
-
-        // if(Obj2cut.find(pObj) != Obj2cut.end()){
-        //   int num = 0;
-        //   for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> si = Obj2cut[pObj].rbegin(); si != Obj2cut[pObj].rend(); si++){
-        //     printf("%d:", Abc_ObjId(pObj));
-        //     for(const auto &s : *si){
-        //       printf(" %s", Abc_ObjId(s));
-        //     }
-        //     printf("\n");
-        //   }
-        // }
-
-      }
-
-      
-
-        // for(int l=0; l<Obj2cut[pObj].size(); l++){
-        //   printf("%d: ", Abc_ObjId(pObj));
-
-        // }
-        // printf("%d   ", Obj2cut[pObj].size());
-        // for(const auto &cut : Obj2cut[pObj]){
-        //   Abc_Print(-2,"(");
-        //   for(const auto &s : cut){
-        //     Abc_Print(-2, Abc_ObjName(s));
-        //     Abc_Print(-2, ", ");
-        //   }
-        //   Abc_Print(-2,"), ");
-        // }
-        // Abc_Print(-2, "\n");
-      /////////////////////////////////////////////////////////////////////////////////
-      // if(Obj2cut.find(pObj) != Obj2cut.end()){
-      //   int num = 0;
-      //   for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> si = Obj2cut[pObj].rbegin(); si != Obj2cut[pObj].rend(); si++){
-      //     printf("%d:", Abc_ObjId(pObj));
-      //     for(const auto &s : *si){
-      //       printf(" %s", Abc_ObjId(s));
-      //     }
-      //     printf("\n");
-      //   }
-      // }
-      /////////////////////////////////////////////////////////////////////////////////
-
-
-    }
-  }
-
-  for (int i = 0; (i < Vec_PtrSize((pNtk)->vObjs)) && (((pObj) = Abc_NtkObj(pNtk, i)), 1); i++ ){   
-    if (pObj == NULL)  continue;
-    if (!Abc_ObjIsNode(pObj)){
-      if (Abc_ObjFaninNum(pObj)) continue;
-      else if(Obj2cut.find(pObj) != Obj2cut.end()){
-            // printf("%d:", Abc_ObjId(pObj));
-  //         // int num = 0;
-          for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> si = Obj2cut[pObj].rbegin(); si != Obj2cut[pObj].rend(); si++){
-            printf("%d:", Abc_ObjId(pObj));
-            for(const auto &s : *si){
-              printf(" %d", Abc_ObjId(s));
-            }
-            printf("\n");
-          }
-        }
-    }else{
-      // if (!Abc_ObjFaninNum(pObj)){
-        if(Obj2cut.find(pObj) != Obj2cut.end()){
-            // printf("%d:", Abc_ObjId(pObj));
-  //         // int num = 0;
-          for(std::reverse_iterator<std::set<std::set<Abc_Obj_t*>>::iterator> si = Obj2cut[pObj].rbegin(); si != Obj2cut[pObj].rend(); si++){
-            printf("%d:", Abc_ObjId(pObj));
-            for(const auto &s : *si){
-              printf(" %d", Abc_ObjId(s));
-            }
-            printf("\n");
-          }
-        }
-      // }
-    }
-  }
-
-  // int tmp;
-  // Abc_NtkForEachPo(pNtk, pObj, tmp) {
-  //   Abc_Obj_t* pFanin = Abc_ObjFanin(pObj, 0);
-  //   std::set<Abc_Obj_t*> tmpcut{pObj};
-  //   Obj2cut[pObj].insert(tmpcut);
-  //   std::set<Abc_Obj_t*> tmpcut2{pFanin};
-  //   Obj2cut[pObj].insert(tmpcut2);
-  //   for(const auto &s1 : Obj2cut[pFanin]){
-  //     std::set<Abc_Obj_t*> tmpcut3(s1);
-  //     if(tmpcut3.size() > k_value) continue;
-  //     Obj2cut[pObj].insert(tmpcut3);
-  //   }
-  // }
-
-
-  // for (int i = 0; (i < Vec_PtrSize((pNtk)->vObjs)) && (((pObj) = Abc_NtkObj(pNtk, i)), 1); i++ ){   
-  //     if (pObj == NULL)  continue;
-  //   // Abc_Print(-2, "It's : ");
-  //   // if(!Abc_ObjIsNode(pObj)) Abc_Print(-2, "Node "); //printf("It's Node");
-  //   // if(!Abc_ObjFaninNum(pObj)) Abc_Print(-2, "Fan ");
-      
-  //   printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
-
-  //     if(Obj2cut.find(pObj) != Obj2cut.end()){
-  //       printf("%d   ", Obj2cut[pObj].size());
-  //       for(const auto &cut : Obj2cut[pObj]){
-  //         Abc_Print(-2,"(");
-  //         for(const auto &s : cut){
-  //           Abc_Print(-2, Abc_ObjName(s));
-  //           Abc_Print(-2, ", ");
-  //         }
-  //         Abc_Print(-2,"), ");
-  //       }
-  //       Abc_Print(-2, "\n");
-  //     }
-
-  //   Abc_Obj_t* pFanin;
-  //   int j;
-  //   Abc_ObjForEachFanin(pObj, pFanin, j) {
-  //     printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-  //           Abc_ObjName(pFanin));
-  //   }
-  //   if (Abc_NtkHasSop(pNtk)) {
-  //     printf("The SOP of this node:\n%s", (char*)pObj->pData);
-  //   }
-  // }
+    // 清理
+    Aig_ManStop(pAig);
+    Abc_NtkDelete(pConeNtk);
 }
 
-int Lsv_CommandPrintCuts(Abc_Frame_t* pAbc, int argc, char** argv) {
-  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  // printf("\n%s ", argv[1]);
-  int c = std::stoi(argv[1]);
-  // printf("\n %d\n\n", c);
-  if (!pNtk) {
-    Abc_Print(-1, "Empty network.\n");
-    return 1;
-  }
-  Lsv_NtkPrintCuts(pNtk, c);
-  return 0;
+int CheckPattern(sat_solver * pSolver, Cnf_Dat_t * pCnf, int y0, int y1, int v0, int v1) {
+    // 重設求解器
+    sat_solver_restart(pSolver);
 
-// usage:
-//   Abc_Print(-2, "usage: lsv_print_cuts [-h]\n");
-//   Abc_Print(-2, "\t        prints the nodes in the network\n");
-//   Abc_Print(-2, "\t-h    : print the command usage\n");
-//   return 1;
+    // 將CNF重新寫入求解器
+    Cnf_DataWriteIntoSolver(pCnf, 1, 0);
+
+    // 假設y0和y1的值分別為v0和v1
+    int lit_y0 = Abc_Var2Lit(y0, v0 == 0 ? 1 : 0);
+    int lit_y1 = Abc_Var2Lit(y1, v1 == 0 ? 1 : 0);
+
+    // 添加假設條件
+    sat_solver_addclause(pSolver, &lit_y0, &lit_y0 + 1);
+    sat_solver_addclause(pSolver, &lit_y1, &lit_y1 + 1);
+
+    // 求解CNF公式
+    int status = sat_solver_solve(pSolver, NULL, NULL, 0, 0, 0, 0);
+    return status;
 }
 
+
+void Lsv_NtkPrint_SDC(Abc_Ntk_t* pNtk, int n) {
+
+    Cnf_Dat_t * pCnf;
+    sat_solver * pSolver;
+    int y0, y1;
+
+    // 創建包含y0和y1的傳遞扇入錐並導出CNF
+    CreateCnfForFaninNodes(pNtk, n, &pCnf, &pSolver, &y0, &y1);
+    cout<<n <<": "<<y0<<", "<<y1<<endl;
+
+    // // 獲取y0和y1的變量索引
+    // int y0 = pCnf->pVarNums[Abc_ObjId(Abc_ObjFanin0(Abc_NtkObj(pNtk, n)))];
+    // int y1 = pCnf->pVarNums[Abc_ObjId(Abc_ObjFanin1(Abc_NtkObj(pNtk, n)))];
+
+    // 檢查所有模式
+    int patterns[4][2] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    for (int i = 0; i < 4; i++) {
+        int v0 = patterns[i][0];
+        int v1 = patterns[i][1];
+        int status = CheckPattern(pSolver, pCnf, y0, y1, v0, v1);
+        if (status == l_False) {
+            printf("Pattern (%d, %d) is an SDC.\n", v0, v1);
+        } else {
+            printf("Pattern (%d, %d) is not an SDC.\n", v0, v1);
+        }
+    }
+
+    // 清理
+    Cnf_DataFree(pCnf);
+    sat_solver_delete(pSolver);
+
+
+
+
+    // Abc_Obj_t * pNodeA = Abc_NtkObj(pNtk, n);
+    // Abc_Obj_t * pFanin0 = Abc_ObjFanin0(pNodeA);
+    // Abc_Obj_t * pFanin1 = Abc_ObjFanin1(pNodeA);
+
+    // // 創建一個指針向量來存儲這些節點
+    // // Vec_Ptr_t * vNodes = Vec_PtrAlloc(3);
+    // Vec_Ptr_t * vNodes = Vec_PtrAlloc(2);
+    // // Vec_PtrPush(vNodes, pNodeA);
+    // Vec_PtrPush(vNodes, pFanin0);
+    // Vec_PtrPush(vNodes, pFanin1);
+
+    // // 創建包含這些節點的傳遞扇入錐
+    // Abc_Ntk_t * pConeNtk = Abc_NtkCreateConeArray(pNtk, vNodes, 1);
+    // Vec_PtrFree(vNodes);
+
+    // // 將傳遞扇入錐轉換為AIG
+    // Aig_Man_t * pAig = Abc_NtkToDar(pConeNtk, 0, 0);
+
+    // // 導出CNF，這裡假設只有一個輸出
+    // Cnf_Dat_t * pCnf = Cnf_Derive(pAig, 2);
+
+    // // 初始化SAT求解器
+    // sat_solver * pSolver = sat_solver_new();
+
+    // // 將CNF寫入求解器
+    // Cnf_DataWriteIntoSolver(pCnf, 1, 0);
+
+    // // 清理
+    // Cnf_DataFree(pCnf);
+    // Aig_ManStop(pAig);
+    // Abc_NtkDelete(pConeNtk);
+
+    // // 使用求解器進行求解
+    // // 例如，檢查SAT問題是否可滿足
+    // int status = sat_solver_solve(pSolver, NULL, NULL, 0, 0, 0, 0);
+    // if (status == l_True) {
+    //     printf("SAT problem is satisfiable.\n");
+    // } else if (status == l_False) {
+    //     printf("SAT problem is unsatisfiable.\n");
+    // } else {
+    //     printf("SAT problem is undecided.\n");
+    // }
+
+    // // 釋放求解器
+    // sat_solver_delete(pSolver);
+
+}
+
+void Lsv_NtkPrint_ODC(Abc_Ntk_t* pNtk, int n_value) {
+  cout<< "n= "<<n_value <<endl;
+  
+}
 
 void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
   Abc_Obj_t* pObj;
@@ -390,4 +243,56 @@ usage:
   Abc_Print(-2, "\t        prints the nodes in the network\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
+}
+
+int Lsv_CommandPrintSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c = std::stoi(argv[1]);
+  Extra_UtilGetoptReset();
+  // while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+  //   switch (c) {
+  //     case 'h':
+  //       goto usage;
+  //     default:
+  //       goto usage;
+  //   }
+  // }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_NtkPrint_SDC(pNtk, c);
+  return 0;
+
+// usage:
+//   Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
+//   Abc_Print(-2, "\t        prints the nodes in the network\n");
+//   Abc_Print(-2, "\t-h    : print the command usage\n");
+//   return 1;
+}
+
+int Lsv_CommandPrintODC(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c = std::stoi(argv[1]);
+  Extra_UtilGetoptReset();
+  // while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+  //   switch (c) {
+  //     case 'h':
+  //       goto usage;
+  //     default:
+  //       goto usage;
+  //   }
+  // }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  Lsv_NtkPrint_ODC(pNtk, c);
+  return 0;
+
+// usage:
+//   Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
+//   Abc_Print(-2, "\t        prints the nodes in the network\n");
+//   Abc_Print(-2, "\t-h    : print the command usage\n");
+//   return 1;
 }
