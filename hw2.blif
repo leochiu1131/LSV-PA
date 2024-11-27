@@ -1,0 +1,8 @@
+# Boolean function f = ab(c+¬d)+(a¬b+¬ab)(¬cd+c¬d)
+.model boolean_function
+.inputs a b c d
+.outputs f
+.names a c d f
+110 1
+101 1
+.end
