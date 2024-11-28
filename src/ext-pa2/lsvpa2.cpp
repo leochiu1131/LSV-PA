@@ -50,7 +50,7 @@ bool RandomSimulation(Aig_Man_t * pAig, std::vector<int>& appear_cnt, int nPatte
     Aig_Obj_t * pObj;
     int i, j;
 
-    // 遍歷多組輸入模式
+    
     for (i = 0; i < nPatterns; i++) {
         Aig_ManForEachNode(pAig, pObj, j) 
         {
@@ -71,16 +71,16 @@ bool RandomSimulation(Aig_Man_t * pAig, std::vector<int>& appear_cnt, int nPatte
         {
             return 1;
         }
-        // 隨機設置所有 PI 值
+        
         std::cout<<"Generate Pattern "<<i<<std::endl;
         Aig_ManForEachCi(pAig, pObj, j) {
-            int* randomValue = new int(rand() & 1); // 隨機生成 0 或 1
+            int* randomValue = new int(rand() & 1);
             std::cout<<Aig_ObjId(pObj)<<": "<<*randomValue<<std::endl;
             pObj->pData = (void *)randomValue;
         }
         std::cout<<"END Generate Pattern "<<i<<std::endl;
 
-        // 模擬所有節點
+        
         Aig_ManForEachNode(pAig, pObj, j) 
         {
             int value0 = *(int*)Aig_ObjFanin0(pObj)->pData;
@@ -90,14 +90,14 @@ bool RandomSimulation(Aig_Man_t * pAig, std::vector<int>& appear_cnt, int nPatte
             if(Aig_ObjFaninC1(pObj))
                 value1 = !value1;
 
-            int* result = new int(value0 & value1); // 假設是 AND 節點
+            int* result = new int(value0 & value1); 
             std::cout<<"FANIN0  "<<Aig_ObjId(Aig_ObjFanin0(pObj))<<" "<<value0<<std::endl;
             std::cout<<"FANIN1  "<<Aig_ObjId(Aig_ObjFanin1(pObj))<<" "<<value1<<std::endl;
             std::cout<<"CUR: "<<Aig_ObjId(pObj)<<" "<<*result<<std::endl;
             pObj->pData = (void *)result;
         }
 
-        // 打印 PO 值
+
         Aig_ManForEachCo(pAig, pObj, j) {
             int outputValue = *(int*)Aig_ObjFanin0(pObj)->pData;
             Aig_Obj_t* pOUT = Aig_ObjFanin0(pObj);  //true output
@@ -126,7 +126,7 @@ bool RandomSimulation(Aig_Man_t * pAig, std::vector<int>& appear_cnt, int nPatte
 
 bool solve_sdc(Aig_Man_t* pMan, bool v0, bool v1)
 {
-    Cnf_Dat_t * pCnf = Cnf_Derive(pMan, 0);
+    Cnf_Dat_t * pCnf = Cnf_DeriveSimple(pMan, 0);
     Aig_Obj_t * HEAD = Aig_ObjFanin0(Aig_ManCo(pMan, 0));
     Aig_Obj_t * pY0 = Aig_ObjFanin0(HEAD);
     Aig_Obj_t * pY1 = Aig_ObjFanin1(HEAD);
@@ -163,7 +163,7 @@ bool solve_sdc(Aig_Man_t* pMan, bool v0, bool v1)
     for (int i = 0; i < pCnf->nVars; i++)
     {
         int value = sat_solver_var_value(pSat, i);
-        printf("SAT 变量 %d = %d\n", i, value);
+        printf("SAT  %d = %d\n", i, value);
     }
 
 
@@ -187,7 +187,7 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv)
 
     Aig_Man_t * pMan = Abc_NtkToDar( pNtkAig, 0, 0 );   //make aig circuit
 
-
+    std::cout<<"Node: "<<Aig_ManObjNum(pMan)<<std::endl;;
 
     std::vector<int> appear_cnt;
     appear_cnt.resize(4,0);
