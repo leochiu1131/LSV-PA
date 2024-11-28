@@ -373,7 +373,7 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
       if(index1 == output[1] && index0 == output[0]) continue;
       l[0] = var[0] * 2 + (index0 == 0);
       l[1] = var[1] * 2 + (index1 == 0);
-      sol = sat_solver_solve(sat, l, l+2, 10000000,10000000,10000000,10000000);
+      sol = sat_solver_solve(sat, l, l+2, 0, 0, 0, 0);
       if(sol != 1) {
         no_SDC = 0;
         printf("%d%d\n", index0^Comp[0], index1^Comp[1]);
@@ -432,12 +432,26 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   
   Vec_Ptr_t* Fanins;
   Fanins = Vec_PtrAllocExact(2);
-  Vec_PtrPush( Fanins, Abc_ObjFanin0(Target));
-  Vec_PtrPush( Fanins, Abc_ObjFanin1(Target));
+  Abc_Obj_t** Fanin_Target = new Abc_Obj_t*[2];
+  Abc_Obj_t* pFanin;
+  int pi;
+  Abc_ObjForEachFanin(Target, pFanin, pi){
+    Fanin_Target[pi] = pFanin;
+  }
+  Vec_PtrPush( Fanins, Fanin_Target[0]);
+  Vec_PtrPush( Fanins, Fanin_Target[1]);
+  Abc_Ntk_t* ConeArray = Abc_NtkCreateConeArray(pNtk, Fanins, 1);
+  sat_solver* sat_conearray = sat_solver_new();
+  Aig_Man_t* pAig_conearray = Abc_NtkToDar(ConeArray, 0, 0);
+  Cnf_Dat_t* cnf_conearray = Cnf_Derive(pAig_conearray, 2);
+  int var_conearray[2];
+  Aig_Obj_t* Co_cone;
+  Aig_ManForEachCo(pAig_conearray, Co_cone, pi) var_conearray[pi] = cnf_conearray->pVarNums[Co_cone->Id];
+  //Cnf_DataPrint(cnf_conearray,1);
+  Cnf_DataWriteIntoSolverInt(sat_conearray,cnf_conearray,1,1);
   /*
   Abc_Obj_t* p_F;
   int I;
-  
   Abc_ObjForEachFanin(Target, p_F, I) {
     printf("Fanin%d : %d\n", I, Abc_ObjId(p_F));
   }
@@ -445,7 +459,8 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     printf("Fanin%d : %d\n", I, Abc_ObjId(p_F));
   }
   */
-  Abc_Ntk_t* ConeArray = Abc_NtkCreateConeArray(pNtk, Fanins, 1);
+  
+  //printf("%s %s\n", Abc_ObjName(Abc_NtkCo(ConeArray, 0)), Abc_ObjName(Abc_NtkCo(ConeArray, 1)));
 
   Abc_Obj_t* pObj;
   int i;
@@ -467,18 +482,20 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   }
   Abc_Ntk_t* BigNtk;
   BigNtk = Abc_NtkMiter(pNtk, pNtk2, 1, 0, 0, 0);
+  
   if(Abc_NtkAppend(BigNtk, ConeArray,1) == 0) printf("Failed to append Network!\n");  
+  
   //int* input  = new int[Abc_NtkPiNum(BigNtk)]();
   //printf("Target Name %s\n", Abc_ObjName(Target));
   Abc_Obj_t* TargetBig = NULL;
   string Name_target(Abc_ObjName(Target));
   Abc_NtkForEachNode(BigNtk, pObj,i) {
-    //Name_Obj = string(Abc_ObjName(pObj));
-    //printf("Check : %s\n",  Name_Obj);
+    string Name_Obj = string(Abc_ObjName(pObj));
+    //printf("Check : %s\n",  Name_Obj.c_str());
     //int cmp = strcmp(Name_target,Name_Obj);
     //printf("%d\n", cmp);
     if(Name_target.compare(Abc_ObjName(pObj)) == 0) {
-      printf("Find Target!!! %d\n", Abc_ObjId(pObj));
+      //printf("Find Target!!! %d\n", Abc_ObjId(pObj));
       TargetBig = pObj;
     }
   }
@@ -526,16 +543,16 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_ObjForEachFanin(pObj, pFanin, j) {
       if(i == 1) {
         if(TargetBig == NULL) break;
-        printf("%d %d\n", Abc_ObjId(Abc_ObjFanin0(TargetBig)), Abc_ObjId(Abc_ObjFanin1(TargetBig)));
-        printf("%d\n", Abc_ObjId(pFanin));
-        printf("test id : %d %d\n", Abc_ObjId(pFanin), pFanin->Id);
+        //printf("%d %d\n", Abc_ObjId(Abc_ObjFanin0(TargetBig)), Abc_ObjId(Abc_ObjFanin1(TargetBig)));
+        //printf("%d\n", Abc_ObjId(pFanin));
+        //printf("test id : %d %d\n", Abc_ObjId(pFanin), pFanin->Id);
         //printf("ID compare : %d %d\n", Abc_ObjId(pFanin), );
         if(Abc_ObjId(pFanin) == Abc_ObjId(Abc_ObjFanin1(TargetBig))) swap = true;
       }
       //printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),Abc_ObjName(pFanin));
     }
   }
-  printf("swap : %s\n", (swap)?"True":"False");
+  //printf("swap : %s\n", (swap)?"True":"False");
   
   sat_solver* sat = sat_solver_new();
   Aig_Man_t* pAig = Abc_NtkToDar(BigNtk, 0, 0);
@@ -558,20 +575,19 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     printf("var[%d] = %d\n", k, var[k]);
   }
   */
-  sat_solver* sat_conearray = sat_solver_new();
-  Aig_Man_t* pAig_conearray = Abc_NtkToDar(ConeArray, 0, 0);
-  Cnf_Dat_t* cnf_conearray = Cnf_Derive(pAig_conearray, 2);
+  
   //Abc_NtkForEachCi(ConeArray, pObj, i) printf("Input : %d %d\n", Abc_ObjId(pObj), cnf->pVarNums[pObj->Id]);
   //Abc_NtkForEachCo(ConeArray, pObj, i) printf("Output : %d %d\n", Abc_ObjId(pObj), cnf->pVarNums[pObj->Id]);
-  int var_conearray[2];
-  Aig_ManForEachCo(pAig_conearray, AigObj, i) var_conearray[i] = cnf_conearray->pVarNums[AigObj->Id];
-  //Cnf_DataPrint(cnf_conearray,1);
-  Cnf_DataWriteIntoSolverInt(sat_conearray,cnf_conearray,1,1);
+  
   /*
   for(int k = 0; k < 2; k++) {
     printf("var_conearray[%d] = %d\n", k, var_conearray[k]);
   }
   */
+  //printf("%s\n", (swap)?"Swaped":"No swap");
+  //printf("var: %d %d \n", var[1], var[2]);
+  //printf("COMP : %d%d\n", Comp[0], Comp[1]);
+  //printf("var_conearray : %d %d\n", var_conearray[0], var_conearray[1]);
   bool no_odc = true;
   lit* l = new lit[3];
   lit* l_cone = new lit[2];
@@ -580,13 +596,13 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   //00
   l[1] = (var[1]*2+1);
   l[2] = (var[2]*2+1);
-  result = sat_solver_solve(sat, l, l+3, 2147483647,2147483647,2147483647,2147483647);
+  result = sat_solver_solve(sat, l, l+3, 0, 0, 0, 0);
   if(result == 0) printf("Solver out of limit!");
   //printf("result : %d\n", result);
   if (result != 1) {
     l_cone[0] = var_conearray[0] * 2 + 1;
     l_cone[1] = var_conearray[1] * 2 + 1;
-    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 10000000,10000000,10000000,10000000) == 1) {
+    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
       printf("%d%d\n", 0^Comp[0], 0^Comp[1]);
     } else {
@@ -597,13 +613,13 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   //01
   l[1] = (var[1]*2+1);
   l[2] = (var[2]*2);
-  result = sat_solver_solve(sat, l, l+3, 2147483647,2147483647,2147483647,2147483647);
+  result = sat_solver_solve(sat, l, l+3, 0, 0, 0, 0);
   if(result == 0) printf("Solver out of limit!");
   //printf("result : %d\n", result);
   if (result != 1) {
     l_cone[0] = var_conearray[0] * 2 + 1;
     l_cone[1] = var_conearray[1] * 2;
-    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 10000000,10000000,10000000,10000000) == 1) {
+    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
       printf("%d%d\n", 0^Comp[0], 1^Comp[1]);
     } else {
@@ -613,13 +629,13 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   //10
   l[1] = (var[1]*2);
   l[2] = (var[2]*2+1);
-  result = sat_solver_solve(sat, l, l+3, 2147483647,2147483647,2147483647,2147483647);
+  result = sat_solver_solve(sat, l, l+3, 0, 0, 0, 0);
   if(result == 0) printf("Solver out of limit!");
   //printf("result : %d\n", result);
   if (result != 1) {
     l_cone[0] = var_conearray[0] * 2;
     l_cone[1] = var_conearray[1] * 2 + 1;
-    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 10000000,10000000,10000000,10000000) == 1) {
+    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
       printf("%d%d\n", 1^Comp[0], 0^Comp[1]);
     } else {
@@ -629,13 +645,13 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   //11
   l[1] = (var[1]*2);
   l[2] = (var[2]*2);
-  result = sat_solver_solve(sat, l, l+3, 2147483647,2147483647,2147483647,2147483647);
+  result = sat_solver_solve(sat, l, l+3, 0, 0, 0, 0);
   if(result == 0) printf("Solver out of limit!");
   //printf("result : %d\n", result);
   if (result != 1) {
     l_cone[0] = var_conearray[0] * 2;
     l_cone[1] = var_conearray[1] * 2;
-    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 10000000,10000000,10000000,10000000) == 1) {
+    if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
       printf("%d%d\n", 1^Comp[0], 1^Comp[1]);
     } else {
@@ -650,8 +666,22 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
 
 int Lsv_CommandODC_LOOP(Abc_Frame_t* pAbc, int argc, char** argv) {
   if(argc != 3) {
-    printf("Format should be \" lsv_odc <k> \" where k is an integer denotes a node.\n");
+    printf("Format should be \" lsv_odc <k1> <k2>\" where k is an integer denotes a node.\n");
     return 1;
+  } 
+  char** my_argv = argv;
+  int my_argc = 2;
+  int n;
+  sscanf(argv[1], "%d", &n);
+  int n_end;
+  sscanf(argv[2], "%d", &n_end);
+  while(n <= n_end) {
+    string s = std::to_string(n);
+    sscanf(s.c_str(), "%s", my_argv[1]);
+    //my_argv[1] = s.c_str();
+    printf("lsv_odc %d : \n", n);
+    Lsv_CommandODC(pAbc, my_argc, my_argv);
+    n++;
   }
   return 0;
 }
