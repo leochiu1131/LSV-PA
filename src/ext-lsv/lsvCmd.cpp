@@ -6,10 +6,12 @@
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCut, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSDC, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -63,6 +65,180 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
+
+int * My_Abc_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
+{
+    Abc_Obj_t * pNode;
+    int * pValues, Value0, Value1, i;
+    int fStrashed = 0;
+    if ( !Abc_NtkIsStrash(pNtk) )
+    {
+        pNtk = Abc_NtkStrash(pNtk, 0, 0, 0);
+        fStrashed = 1;
+    }
+
+    // increment the trav ID
+    Abc_NtkIncrementTravId( pNtk );
+    // set the CI values
+    Abc_AigConst1(pNtk)->pCopy = (Abc_Obj_t *)1;
+    Abc_NtkForEachCi( pNtk, pNode, i )
+        pNode->pCopy = (Abc_Obj_t *)(ABC_PTRINT_T)pModel[i];
+    // simulate in the topological order
+    Abc_NtkForEachNode( pNtk, pNode, i )
+    {
+        Value0 = ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
+        Value1 = ((int)(ABC_PTRINT_T)Abc_ObjFanin1(pNode)->pCopy);
+        Value0 = Abc_ObjFaninC0(pNode) ? ~Value0 : Value0;
+        Value1 = Abc_ObjFaninC1(pNode) ? ~Value1 : Value1;
+        pNode->pCopy = (Abc_Obj_t *)(ABC_PTRINT_T)(Value0 & Value1);
+    }
+    // fill the output values
+    pValues = ABC_ALLOC( int, Abc_NtkCoNum(pNtk) );
+    Abc_NtkForEachCo( pNtk, pNode, i ){
+        pValues[i] = ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
+        pValues[i] = Abc_ObjFaninC0(pNode) ? ~pValues[i] : pValues[i];
+    }
+    if ( fStrashed )
+        Abc_NtkDelete( pNtk );
+    return pValues;
+}
+
+void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
+  // Abc_Ntk_t* transFanin = Abc_NtkCreateCone(pNtk, pObj, "test", 0);
+  Vec_Ptr_t* v_roots = Vec_PtrAlloc(5);
+
+  Abc_Obj_t* pFanin;
+  int i;
+  Abc_ObjForEachFanin(pObj, pFanin, i) {
+    Vec_PtrPush(v_roots, pFanin);
+  }
+
+  Abc_Ntk_t* transFanin = Abc_NtkCreateConeArray(pNtk, v_roots, 0);
+
+  int* pModel = (int*)malloc(sizeof(int) * Abc_NtkCiNum(transFanin));
+  for(i = 0; i < Abc_NtkCiNum(transFanin); i++){
+    pModel[i] = 0;
+  }
+  
+  if(Abc_NtkCiNum(transFanin) <= 5){
+    for(i = 0; i < Abc_NtkCiNum(transFanin); i++){
+      switch(i){
+        case 0:
+          pModel[i] = 0x55555555;
+          break;
+        case 1:
+          pModel[i] = 0x33333333;
+          break;
+        case 2:
+          pModel[i] = 0x0f0f0f0f;
+          break;
+        case 3:
+          pModel[i] = 0x00ff00ff;
+          break;
+        case 4:
+          pModel[i] = 0x0000ffff;
+          break;
+        default:
+          pModel[i] = 0;
+          printf("Error: too many CI\n");
+          break;
+      }
+    }
+  }
+  else{
+
+  }
+
+  int* pSimInfo = My_Abc_NtkVerifySimulatePattern(transFanin, pModel);
+
+  if(Abc_ObjFaninC0(pObj)){
+    pSimInfo[0] = ~pSimInfo[0];
+  }
+  if(Abc_ObjFaninC1(pObj)){
+    pSimInfo[1] = ~pSimInfo[1];
+  }
+  
+  Abc_NtkForEachCo(transFanin, pFanin, i){
+    printf("CO: Id = %d, name = %s\n", Abc_ObjId(pFanin), Abc_ObjName(pFanin));
+  }
+  
+  int pSimInfo_bool[4];
+  int masked_SimInfo[4];
+  masked_SimInfo[0] = ~(pSimInfo[0] ^ 0x00000000);
+  masked_SimInfo[1] = ~(pSimInfo[1] ^ 0x00000000);
+  masked_SimInfo[2] = ~(pSimInfo[0] ^ 0xffffffff);
+  masked_SimInfo[3] = ~(pSimInfo[1] ^ 0xffffffff);
+  pSimInfo_bool[0] = masked_SimInfo[0] & masked_SimInfo[1];
+  pSimInfo_bool[1] = masked_SimInfo[0] & masked_SimInfo[3];
+  pSimInfo_bool[2] = masked_SimInfo[2] & masked_SimInfo[1];
+  pSimInfo_bool[3] = masked_SimInfo[2] & masked_SimInfo[3];
+
+  for(i = 0; i < 4; i++){
+    printf("pSimInfo_bool[%d] = %d\n", i, pSimInfo_bool[i]);
+  }
+
+  // Abc_Obj_t* pObj_CO;
+  // // int i;
+  // Abc_NtkForEachPo(transFanin, pObj_CO, i) {
+  //   printf("CO: Id = %d, name = %s\n", Abc_ObjId(pObj_CO), Abc_ObjName(pObj_CO));
+  //   Abc_Obj_t* pFanin;
+  //   int j;
+  //   Abc_ObjForEachFanin(pObj_CO, pFanin, j) {
+  //     printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
+  //   }
+  // }
+
+  // Abc_Obj_t* pObj_new;
+  // // int i;
+  // Abc_NtkForEachNode(transFanin, pObj_new, i){
+  //   char* name = Abc_ObjName(pObj_new);
+  //   printf("in lsv_sdc %s\n", name);
+  //   Abc_Obj_t* pFanin;
+  //   int j;
+  //   Abc_ObjForEachFanin(pObj_new, pFanin, j){
+  //     printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
+  //   }
+  // }
+  
+  return;
+}
+
+int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  
+  if(argc != 2) {
+    Abc_Print(-1, "Wrong number of arguments.\n");
+    Abc_Print(-2, "usage: lsv_sdc <n>\n");
+    Abc_Print(-2, "\t        prints all k-feasible cuts for all nodes in the network\n");
+    return 1;
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+
+  Abc_Obj_t* pObj;
+  int i;
+  int found_node = 0;
+  Abc_NtkForEachNode(pNtk, pObj, i){
+    char* name = Abc_ObjName(pObj);
+    printf("%s\n", name);
+    
+    if(strcmp(name+1, argv[1]) == 0){
+      printf("find node %s\n", name);
+      found_node = 1;
+      Lsv_sdc(pNtk, pObj);
+      break;
+    }
+  }
+
+  if(!found_node){
+    Abc_Print(-1, "Node not found.\n");
+    return 1;
+  }
+  return 0;
+}
+
 
 int find_index(int* id_to_index, int array_size, int node_id) {
   int index = -1;
