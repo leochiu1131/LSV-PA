@@ -1003,6 +1003,7 @@ void Abc_QuickSortTest()
 
 unsigned Abc_Random( int fReset )
 {
+
 #ifdef _MSC_VER
     static unsigned int m_z = NUMBER1;
     static unsigned int m_w = NUMBER2;

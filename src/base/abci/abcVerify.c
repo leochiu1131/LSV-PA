@@ -718,10 +718,12 @@ int * Abc_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
     }
     // fill the output values
     pValues = ABC_ALLOC( int, Abc_NtkCoNum(pNtk) );
-    Abc_NtkForEachCo( pNtk, pNode, i )
+    Abc_NtkForEachCo( pNtk, pNode, i ){
         pValues[i] = ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy) ^ (int)Abc_ObjFaninC0(pNode);
+    }
     if ( fStrashed )
         Abc_NtkDelete( pNtk );
+
     return pValues;
 }
 
