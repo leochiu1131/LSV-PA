@@ -435,17 +435,17 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
     // Attempt1: Use Cnf_Derive; however, it optimizes the CNF formula and therefore some variables are missing.
     // Attmept2: Add the block clause to the original network and regerate the CNF formula every time; however, the formula remains the same and I don't know the reason. 
     // Attmept3: Convert the network by myself
-    Cnf_Dat_t* pCnf = Cnf_Derive(Abc_NtkToDar(pNtk, 0, 0), 1);
-    sat_solver* pSat1 = sat_solver_new();
-    Cnf_DataWriteIntoSolverInt(pSat1, pCnf, 1, 0);
-    int s = sat_solver_solve(pSat1, NULL, NULL, 0, 0, 0, 0);
-    if (s == l_False) {
-      printf("no odc\n");
-    } else if (s == l_True) {
-      Cnf_DataPrint(pCnf, 1);
-    } else {
-      printf("SAT solver returned undefined status.\n");
-    }
+    // Cnf_Dat_t* pCnf = Cnf_Derive(Abc_NtkToDar(pNtk, 0, 0), 1);
+    // sat_solver* pSat1 = sat_solver_new();
+    // Cnf_DataWriteIntoSolverInt(pSat1, pCnf, 1, 0);
+    // int s = sat_solver_solve(pSat1, NULL, NULL, 0, 0, 0, 0);
+    // if (s == l_False) {
+    //   printf("no odc\n");
+    // } else if (s == l_True) {
+    //   Cnf_DataPrint(pCnf, 1);
+    // } else {
+    //   printf("SAT solver returned undefined status.\n");
+    // }
     // return;
 
     // Create sat solver
@@ -503,7 +503,7 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       int compl1 = Abc_ObjFaninC(pObj, 1);
       Abc_Obj_t* fanin0 = Abc_ObjFanin(pObj, 0);
       Abc_Obj_t* fanin1 = Abc_ObjFanin(pObj, 1);
-      printf("Node: %s, %d; Fanin0: %s, %d; Fanin1: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj), Abc_ObjName(fanin0), Abc_ObjId(fanin0), Abc_ObjName(fanin1), Abc_ObjId(fanin1));
+      // printf("Node: %s, %d; Fanin0: %s, %d; Fanin1: %s, %d\n", Abc_ObjName(pObj), Abc_ObjId(pObj), Abc_ObjName(fanin0), Abc_ObjId(fanin0), Abc_ObjName(fanin1), Abc_ObjId(fanin1));
       // ab <-> c, a + c' and b + c' and a' + b' + c
       // Add the original network
       int lits[3];
@@ -566,9 +566,9 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       int fanin0 = ntkObjToVar[Abc_ObjFanin0(pPo)];
       int fanin1 = ntkComplObjToVar[Abc_ObjFanin0(pPo)];
       int fanout = xorFanout;
-      printf("Po: %s, %d; XorFanout: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanout);
-      printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkObjToVar[Abc_ObjFanin0(pPo)]);
-      printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkComplObjToVar[Abc_ObjFanin0(pPo)]);
+      // printf("Po: %s, %d; XorFanout: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanout);
+      // printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkObjToVar[Abc_ObjFanin0(pPo)]);
+      // printf("Fanin0: %s, %d, %d\n", Abc_ObjName(Abc_ObjFanin0(pPo)), Abc_ObjId(Abc_ObjFanin0(pPo)), ntkComplObjToVar[Abc_ObjFanin0(pPo)]);
       // int compl0 = Abc_ObjFaninC(pPo, 0);
       // int compl1 = Abc_ObjFaninC(pPo, 0);
       // if (Abc_ObjId(Abc_ObjFanin0(pPo)) == n) {
@@ -621,11 +621,11 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       lits[1] = toLitCond(orPo, 0);
       sat_solver_addclause(pSat, lits, lits + 2);
     }
-    printf("xorFanoutToVar size: %ld \n", xorFanoutToVar.size());
+    // printf("xorFanoutToVar size: %ld \n", xorFanoutToVar.size());
     int* lits = new int[(int)xorFanoutToVar.size()+1];
     lits[0] = toLitCond(orPo, 1);
     Abc_NtkForEachPo(pNtk, pPo, i) {
-      printf("Po: %s, %d, FanoutVar: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanoutToVar[pPo]);
+      // printf("Po: %s, %d, FanoutVar: %d\n", Abc_ObjName(pPo), Abc_ObjId(pPo), xorFanoutToVar[pPo]);
       lits[i+1] = toLitCond(xorFanoutToVar[pPo], 0);
     }
     sat_solver_addclause(pSat, lits, lits + xorFanoutToVar.size()+1);
@@ -634,7 +634,7 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
     lits[0] = toLitCond(orPo, 0);
     sat_solver_addclause(pSat, lits, lits + 1);
 
-    Sat_SolverWriteDimacs(pSat, "../output_dimacs1", NULL, NULL, 0);
+    // Sat_SolverWriteDimacs(pSat, "../output_dimacs1", NULL, NULL, 0);
 
     // iterate all variables
     // for (const auto &p : ntkObjToVar) {
@@ -645,7 +645,7 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
     std::vector<std::pair<int, int>> odcPatterns;
     std::vector<std::pair<int, int>> careSet;
     int status;
-    i = 0;
+    int counter = 0;
     do {
       status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
       if (status == l_False) {
@@ -667,21 +667,21 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
           }
         }
       } else if (status == l_True) {
-        printf("l_True\n");
-        for (int i = 0; i < pSat->size; ++i) {
-          if (ntkVarToObj.find(i) != ntkVarToObj.end()) {
-            printf("Name: %s, %d\n", Abc_ObjName(ntkVarToObj[i]), sat_solver_var_value(pSat, i));
-          } else {
-            printf("Var: %d, %d\n", i, sat_solver_var_value(pSat, i));
-          }
-          fflush(stdout);
-        }
+        // printf("l_True\n");
+        // for (int i = 0; i < pSat->size; ++i) {
+        //   if (ntkVarToObj.find(i) != ntkVarToObj.end()) {
+        //     printf("Name: %s, %d\n", Abc_ObjName(ntkVarToObj[i]), sat_solver_var_value(pSat, i));
+        //   } else {
+        //     printf("Var: %d, %d\n", i, sat_solver_var_value(pSat, i));
+        //   }
+        //   fflush(stdout);
+        // }
         // block the assignment
         int var0 = ntkObjToVar[Abc_ObjFanin0(Abc_NtkObj(pNtk, n))];
         int var1 = ntkObjToVar[Abc_ObjFanin1(Abc_NtkObj(pNtk, n))];
         int n0 = sat_solver_var_value(pSat, var0);
         int n1 = sat_solver_var_value(pSat, var1);
-        printf("Block: %d %d, %d %d\n", var0, var1, n0, n1);
+        // printf("Block: %d %d, %d %d\n", var0, var1, n0, n1);
 
         // if n0 == 0, then y0 xor n0 -> y0 xor 0 -> !y0*0 + y0*1 -> y0
         // if n0 == 1, then y0 xor n0 -> y0 xor 1 -> !y0*1 + y0*0 -> !y0
@@ -690,18 +690,19 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
         lits[0] = toLitCond(var0, n0);
         lits[1] = toLitCond(var1, n1);
         int ret = sat_solver_addclause(pSat, lits, lits + 2);
-        if (i == 0)
-          Sat_SolverWriteDimacs(pSat, "../output_dimacs2", NULL, NULL, 0);
+        // if (i == 0)
+        //   Sat_SolverWriteDimacs(pSat, "../output_dimacs2", NULL, NULL, 0);
         if (ret ==  0) {
-          printf("Failed to add blocking clause.\n");
+          // printf("Failed to add blocking clause.\n");
           break;
         } 
         careSet.push_back({n0, n1});
       } else {
         // Undefined status
-        printf("SAT solver returned undefined status.\n");
+        // printf("SAT solver returned undefined status.\n");
       }
-    } while (status == l_True);
+      counter++;
+    } while (status == l_True && counter <= 4);
 
     if (odcPatterns.size() == 0) {
       printf("no odc\n");
