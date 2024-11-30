@@ -12,11 +12,13 @@ extern "C"{
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCut, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSDC, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandODC, 0);
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -108,7 +110,7 @@ int * My_Abc_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
     return pValues;
 }
 
-void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
+int* Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
 
   Vec_Ptr_t* v_roots = Vec_PtrAlloc(5);
 
@@ -118,7 +120,7 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
     Vec_PtrPush(v_roots, pFanin);
   }
 
-  Abc_Ntk_t* transFanin = Abc_NtkCreateConeArray(pNtk, v_roots, 0);
+  Abc_Ntk_t* transFanin = Abc_NtkCreateConeArray(pNtk, v_roots, 1);
 
   int* pModel = (int*)malloc(sizeof(int) * Abc_NtkCiNum(transFanin));
   for(i = 0; i < Abc_NtkCiNum(transFanin); i++){
@@ -177,7 +179,7 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
   Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
   // Cnf_DataPrint(pCnf, 1);
 
-  int sdc_sat[4];
+  int* sdc_sat = new int[4];
   int sdc_num = 0;
   for(i = 0; i < 4; i++){
     // printf("pSimInfo_bool[%d] = %d\n", i, pSimInfo_bool[i]);
@@ -188,7 +190,7 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
 
     sat_solver* pSat = sat_solver_new();
     pSat = (sat_solver*)Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 1);
-    Cnf_DataWriteIntoSolver(pCnf, 1, 1);
+    // Cnf_DataWriteIntoSolver(pCnf, 1, 1);
 
     int j;
     Abc_NtkForEachPo(transFanin, pFanin, j){
@@ -224,11 +226,29 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
   }
   
   if(sdc_num == 0){
-    printf("no sdc\n");
+    return NULL;
+  }
+
+  return sdc_sat;
+}
+
+void print_dc(int* sdc_sat){
+  if(sdc_sat == NULL){
+    printf("[ERROR] no DC\n");
     return;
   }
-  for(i = 0; i < 4; i++){
+
+  int first = 1;
+  for(int i = 0; i < 4; i++){
+    // if value == -1 will be printed as DC
     if(sdc_sat[i] == -1){
+      if(first != 1){
+        printf(" ");
+      }
+      else{
+        first = 0;
+      }
+      
       switch(i){
         case 0:
           printf("00");
@@ -242,10 +262,6 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
         case 3:
           printf("11");
           break;
-      }
-      sdc_num--;
-      if(sdc_num != 0){
-        printf(" ");
       }
     }
   }
@@ -270,6 +286,7 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Obj_t* pObj;
   int i;
   int found_node = 0;
+  int* sdc_sat;
   Abc_NtkForEachNode(pNtk, pObj, i){
     char* name = Abc_ObjName(pObj);
     // printf("%s\n", name);
@@ -277,7 +294,161 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
     if(strcmp(name+1, argv[1]) == 0){
       // printf("find node %s\n", name);
       found_node = 1;
-      Lsv_sdc(pNtk, pObj);
+      sdc_sat = Lsv_sdc(pNtk, pObj);
+      break;
+    }
+  }
+  if(!found_node){
+    Abc_Print(-1, "Node not found.\n");
+    return 1;
+  }
+  if(sdc_sat == NULL){
+    printf("no sdc\n");
+    return 0;
+  }
+  else{
+    print_dc(sdc_sat);
+  }
+  return 0;
+}
+
+int* Lsv_odc(Abc_Ntk_t* pNegNtk, Abc_Obj_t* pObj){
+
+  Vec_Ptr_t* v_roots = Vec_PtrAlloc(5);
+  Abc_Obj_t* pFanin;
+  int i;
+  Abc_ObjForEachFanin(pObj, pFanin, i) {
+    Vec_PtrPush(v_roots, pFanin);
+  }
+  Abc_Ntk_t* transFanin = Abc_NtkCreateConeArray(pNegNtk, v_roots, 1);
+
+  Abc_Ntk_t* pPosNtk = Abc_NtkDup(pNegNtk);
+  Abc_Obj_t* pNextObj = Abc_ObjFanout0(pObj);
+  // printf("fanout0: %s\n", Abc_ObjName(pNextObj));
+  // printf("fanout0: %s\n", Abc_ObjName(Abc_ObjFanin0(pNextObj)));
+  // printf("fcompl0 = %d\n", Abc_ObjFaninC0(pNextObj));
+  // printf("fanout1: %s\n", Abc_ObjName(Abc_ObjFanin1(pNextObj)));
+
+  // Abc_NtkPrintStats(pPosNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  // Abc_NtkPrintIo(stdout, pPosNtk, 0);
+  // Abc_NtkPrintStats(pNegNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  // Abc_NtkPrintIo(stdout, pNegNtk, 0);
+  
+  if(pNextObj == NULL){
+    return NULL;
+  }
+  else if (Abc_ObjFanin0(pNextObj) == pObj){
+    Abc_ObjXorFaninC(pNextObj, 0);
+  }
+  else if (Abc_ObjFanin1(pNextObj) == pObj){
+    Abc_ObjXorFaninC(pNextObj, 1);
+  }
+  else{
+    return NULL;
+  }
+
+  Abc_Ntk_t* pMiterNtk = Abc_NtkMiter(pPosNtk, pNegNtk, 1, 0, 0, 0);
+  if(pMiterNtk == NULL){
+    printf("Miter failed\n");
+    return NULL;
+  }
+  Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  Abc_NtkPrintIo(stdout, pMiterNtk, 0);
+
+  if(!Abc_NtkAppend(pMiterNtk, transFanin, 1)){
+    printf("Append failed\n");
+    return NULL;
+  }
+  Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  Abc_NtkPrintIo(stdout, pMiterNtk, 0);
+
+  int* odc_set = new int[4];
+  int odc_num = 4;
+  for(int i = 0; i < 4; i++){
+    odc_set[i] = -1;
+  }
+
+  Aig_Man_t* pMan = Abc_NtkToDar(pMiterNtk, 0, 1);
+  Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+  Cnf_DataPrint(pCnf, 1);
+
+  sat_solver* pSat = sat_solver_new();
+  pSat = (sat_solver*)Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 1);
+  
+  Abc_Obj_t* pPO;
+  pPO = Abc_NtkPo(pMiterNtk, 0);
+  if(pCnf->pVarNums[pPO->Id] == -1){
+    printf("No miter output\n");
+    return NULL;
+  }
+  printf("Obj Id = %d, name = %s, index in cnf = %d\n", Abc_ObjId(pPO), Abc_ObjName(pPO), pCnf->pVarNums[pPO->Id]);
+  sat_solver_add_const(pSat, pCnf->pVarNums[pPO->Id], 0);
+
+  // pPO = Abc_NtkPo(pMiterNtk, 2);
+  // sat_solver_add_const(pSat, pCnf->pVarNums[pPO->Id], 0);
+  
+  while(odc_num > 0){
+    int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+    if(status == -1){
+      printf("status = -1\n");
+      break;
+    }
+
+    int j;
+    lit Lits[2];
+    int y[2];
+    Abc_NtkForEachPo(pMiterNtk, pPO, j){
+      int PO_cnf_id = pCnf->pVarNums[pPO->Id];
+      printf("Obj Id = %d, name = %s, index in cnf = %d, j = %d\n", Abc_ObjId(pPO), Abc_ObjName(pPO), PO_cnf_id, j);
+      printf("PO %s: %d\n", Abc_ObjName(pPO), sat_solver_var_value(pSat, PO_cnf_id));
+      if(j==0) continue;
+
+      y[j-1] = sat_solver_var_value(pSat, PO_cnf_id) ^ (j==1 ? Abc_ObjFaninC0(pObj) : Abc_ObjFaninC1(pObj));
+      Lits[j-1] = Abc_Var2Lit( PO_cnf_id, sat_solver_var_value(pSat, PO_cnf_id) );
+      printf("y[%d] = %d\n", j-1, y[j-1]);
+      printf("Lits[%d] = %d\n", j-1, Lits[j-1]);
+    }
+
+    odc_set[y[0]*2 + y[1]] = 0;
+    odc_num--;
+
+    int Cid = sat_solver_addclause( pSat, Lits, Lits + 2 );
+    if ( Cid == 0 ){
+      printf("Cid == 0\n");
+      break; // conflict when adding the clause
+    }
+
+  }
+
+  return odc_set;
+}
+
+int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  
+  if(argc != 2) {
+    Abc_Print(-1, "Wrong number of arguments.\n");
+    Abc_Print(-2, "usage: lsv_sdc <n>\n");
+    Abc_Print(-2, "\t        prints all k-feasible cuts for all nodes in the network\n");
+    return 1;
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+
+  Abc_Obj_t* pObj;
+  int i;
+  int found_node = 0;
+  int* odc_set;
+  Abc_NtkForEachNode(pNtk, pObj, i){
+    char* name = Abc_ObjName(pObj);
+    // printf("%s\n", name);
+    
+    if(strcmp(name+1, argv[1]) == 0){
+      // printf("find node %s\n", name);
+      found_node = 1;
+      odc_set = Lsv_odc(pNtk, pObj);
       break;
     }
   }
@@ -286,9 +457,15 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Print(-1, "Node not found.\n");
     return 1;
   }
+  if(odc_set == NULL){
+    printf("no odc\n");
+    return 0;
+  }
+  else{
+    print_dc(odc_set);
+  }
   return 0;
 }
-
 
 int find_index(int* id_to_index, int array_size, int node_id) {
   int index = -1;
