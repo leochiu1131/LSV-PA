@@ -417,8 +417,9 @@ set<vector<int>> Lsv_sdc(Abc_Ntk_t* pNtk, int k){
 
     else{
       for (const auto& pattern : SatResult) {
-        cout << pattern[0]  << pattern[1] << endl;
+        cout << pattern[0]  << pattern[1] << " ";
       }
+      cout << endl;
     }
     return SatResult;
   }
@@ -710,8 +711,9 @@ void Lsv_odc(Abc_Ntk_t* pNtk, int k){
 
     else{
       for (const auto& pattern : SatResult) {
-        cout << pattern[0]  << pattern[1] << endl;
+        cout << pattern[0]  << pattern[1] << " ";
       }
+      cout << endl;
     }
 
 }
