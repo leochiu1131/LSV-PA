@@ -370,10 +370,10 @@ std::vector<std::pair<int, int>> Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n, int ret 
         int res1 = sat_solver_addclause(pSat, &Lit1, &Lit1 + 1);
 
         if (res0 == 0 || res1 == 0) {
-            printf("Failed to add unit clauses to the SAT solver.\n");
+            // printf("Failed to add unit clauses to the SAT solver.\n");
         }
 
-        Sat_SolverWriteDimacs(pSat, "./output_dimacs", NULL, NULL, 0);
+        // Sat_SolverWriteDimacs(pSat, "./output_dimacs", NULL, NULL, 0);
         // Solve the CNF formula
         int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
 
