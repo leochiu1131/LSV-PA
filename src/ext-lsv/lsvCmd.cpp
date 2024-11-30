@@ -381,8 +381,6 @@ std::vector<std::pair<int, int>> Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n, int ret 
         if (status == l_False) {
           // UNSAT: (v0, v1) is an SDC of n in terms of y0, y1
           // printf("(%d, %d) is an SDC of n in terms of y0, y1.\n", v0, v1);
-          if (ret == 0)
-            printf("%d%d\n", v0, v1);
           dontCareSet.push_back({v0, v1});
           flag = 1;
         } else if (status == l_True) {
@@ -397,6 +395,14 @@ std::vector<std::pair<int, int>> Lsv_NtkFindSDC(Abc_Ntk_t* pNtk, int n, int ret 
       if (flag == 0 && ret == 0) {
         printf("no sdc\n");
       }
+    }
+
+    if (ret == 0 && dontCareSet.size() > 0) {
+      // output following the order of "00, 01, 10, 11" 
+      for (const auto &dc : dontCareSet) {
+        printf("%d%d ", dc.first, dc.second);
+      }
+      printf("\n");
     }
     // Clean up
     Sim_Man_t* p = pSimMan;
@@ -635,8 +641,9 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       printf("no odc\n");
     } else {
       for (const auto& pattern : odcPatterns) {
-        printf("%d%d\n", pattern.first, pattern.second);
+        printf("%d%d ", pattern.first, pattern.second);
       }
+      printf("\n");
     }
     
 }
