@@ -4,6 +4,11 @@
 
 #include "./lsvCut.h"
 
+#include "sat/cnf/cnf.h"
+extern "C"{
+ Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+}
+
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv);
@@ -104,7 +109,7 @@ int * My_Abc_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
 }
 
 void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
-  // Abc_Ntk_t* transFanin = Abc_NtkCreateCone(pNtk, pObj, "test", 0);
+
   Vec_Ptr_t* v_roots = Vec_PtrAlloc(5);
 
   Abc_Obj_t* pFanin;
@@ -120,33 +125,28 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
     pModel[i] = 0;
   }
   
-  if(Abc_NtkCiNum(transFanin) <= 5){
-    for(i = 0; i < Abc_NtkCiNum(transFanin); i++){
-      switch(i){
-        case 0:
-          pModel[i] = 0x55555555;
-          break;
-        case 1:
-          pModel[i] = 0x33333333;
-          break;
-        case 2:
-          pModel[i] = 0x0f0f0f0f;
-          break;
-        case 3:
-          pModel[i] = 0x00ff00ff;
-          break;
-        case 4:
-          pModel[i] = 0x0000ffff;
-          break;
-        default:
-          pModel[i] = 0;
-          printf("Error: too many CI\n");
-          break;
-      }
+  for(i = 0; i < Abc_NtkCiNum(transFanin); i++){
+    switch(i){
+      case 0:
+        pModel[i] = 0x55555555;
+        break;
+      case 1:
+        pModel[i] = 0x33333333;
+        break;
+      case 2:
+        pModel[i] = 0x0f0f0f0f;
+        break;
+      case 3:
+        pModel[i] = 0x00ff00ff;
+        break;
+      case 4:
+        pModel[i] = 0x0000ffff;
+        break;
+      default:
+        pModel[i] = rand();
+        break;
     }
-  }
-  else{
-
+    // printf("pModel[%d] = %d\n", i, pModel[i]);
   }
 
   int* pSimInfo = My_Abc_NtkVerifySimulatePattern(transFanin, pModel);
@@ -158,10 +158,10 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
     pSimInfo[1] = ~pSimInfo[1];
   }
   
-  Abc_NtkForEachCo(transFanin, pFanin, i){
-    printf("CO: Id = %d, name = %s\n", Abc_ObjId(pFanin), Abc_ObjName(pFanin));
-  }
-  
+  // Abc_NtkForEachCo(transFanin, pFanin, i){
+  //   printf("CO: Id = %d, name = %s\n", Abc_ObjId(pFanin), Abc_ObjName(pFanin));
+  // }
+
   int pSimInfo_bool[4];
   int masked_SimInfo[4];
   masked_SimInfo[0] = ~(pSimInfo[0] ^ 0x00000000);
@@ -173,33 +173,83 @@ void Lsv_sdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj) {
   pSimInfo_bool[2] = masked_SimInfo[2] & masked_SimInfo[1];
   pSimInfo_bool[3] = masked_SimInfo[2] & masked_SimInfo[3];
 
+  Aig_Man_t* pMan = Abc_NtkToDar(transFanin, 0, 1);
+  Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+  // Cnf_DataPrint(pCnf, 1);
+
+  int sdc_sat[4];
+  int sdc_num = 0;
   for(i = 0; i < 4; i++){
-    printf("pSimInfo_bool[%d] = %d\n", i, pSimInfo_bool[i]);
+    // printf("pSimInfo_bool[%d] = %d\n", i, pSimInfo_bool[i]);
+    if(pSimInfo_bool[i] != 0){
+      sdc_sat[i] = 0;
+      continue;
+    }
+
+    sat_solver* pSat = sat_solver_new();
+    pSat = (sat_solver*)Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 1);
+    Cnf_DataWriteIntoSolver(pCnf, 1, 1);
+
+    int j;
+    Abc_NtkForEachPo(transFanin, pFanin, j){
+      // printf("Obj Id = %d, name = %s, index in cnf = %d, j = %d\n", Abc_ObjId(pFanin), Abc_ObjName(pFanin), pCnf->pVarNums[pFanin->Id], j);
+      int polarity;
+      switch(i){
+        case 0:
+          polarity = (j ? Abc_ObjFaninC1(pObj) : Abc_ObjFaninC0(pObj)) ^ 1;
+          break;
+        case 1:
+          polarity = j ? Abc_ObjFaninC1(pObj) ^ 0 : Abc_ObjFaninC0(pObj) ^ 1;
+          break;
+        case 2:
+          polarity = j ? Abc_ObjFaninC1(pObj) ^ 1 : Abc_ObjFaninC0(pObj) ^ 0;
+          break;
+        case 3:
+          polarity = (j ? Abc_ObjFaninC1(pObj) : Abc_ObjFaninC0(pObj)) ^ 0;
+          break;
+      }
+      // printf("polarity = %d\n", polarity);
+      sat_solver_add_const(pSat, pCnf->pVarNums[pFanin->Id], polarity);
+    }
+
+    int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+    // printf("Status %d\n", status);
+    
+    // Abc_NtkForEachPo(transFanin, pFanin, j){
+    //   printf("PO: %d\n", sat_solver_var_value(pSat, pCnf->pVarNums[Abc_ObjId(pFanin)]));
+    // }
+
+    sdc_num += (status==-1) ? 1 : 0;
+    sdc_sat[i] = status;
   }
-
-  // Abc_Obj_t* pObj_CO;
-  // // int i;
-  // Abc_NtkForEachPo(transFanin, pObj_CO, i) {
-  //   printf("CO: Id = %d, name = %s\n", Abc_ObjId(pObj_CO), Abc_ObjName(pObj_CO));
-  //   Abc_Obj_t* pFanin;
-  //   int j;
-  //   Abc_ObjForEachFanin(pObj_CO, pFanin, j) {
-  //     printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
-  //   }
-  // }
-
-  // Abc_Obj_t* pObj_new;
-  // // int i;
-  // Abc_NtkForEachNode(transFanin, pObj_new, i){
-  //   char* name = Abc_ObjName(pObj_new);
-  //   printf("in lsv_sdc %s\n", name);
-  //   Abc_Obj_t* pFanin;
-  //   int j;
-  //   Abc_ObjForEachFanin(pObj_new, pFanin, j){
-  //     printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin), Abc_ObjName(pFanin));
-  //   }
-  // }
   
+  if(sdc_num == 0){
+    printf("no sdc\n");
+    return;
+  }
+  for(i = 0; i < 4; i++){
+    if(sdc_sat[i] == -1){
+      switch(i){
+        case 0:
+          printf("00");
+          break;
+        case 1:
+          printf("01");
+          break;
+        case 2:
+          printf("10");
+          break;
+        case 3:
+          printf("11");
+          break;
+      }
+      sdc_num--;
+      if(sdc_num != 0){
+        printf(" ");
+      }
+    }
+  }
+  printf("\n");
   return;
 }
 
@@ -222,10 +272,10 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   int found_node = 0;
   Abc_NtkForEachNode(pNtk, pObj, i){
     char* name = Abc_ObjName(pObj);
-    printf("%s\n", name);
+    // printf("%s\n", name);
     
     if(strcmp(name+1, argv[1]) == 0){
-      printf("find node %s\n", name);
+      // printf("find node %s\n", name);
       found_node = 1;
       Lsv_sdc(pNtk, pObj);
       break;
