@@ -368,6 +368,7 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   int sol;
   lit* l = new lit[2];
   bool no_SDC = true;
+  int sdc_result[4];
   for(int index0 = 0; index0 <= 1; index0++) {
     for(int index1 = 0; index1 <= 1; index1++) {
       if(index1 == output[1] && index0 == output[0]) continue;
@@ -376,11 +377,22 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
       sol = sat_solver_solve(sat, l, l+2, 0, 0, 0, 0);
       if(sol != 1) {
         no_SDC = 0;
-        printf("%d%d\n", index0^Comp[0], index1^Comp[1]);
+        sdc_result[(index0^Comp[0])*2+(index1^Comp[1])] = 1;
+        // Stupid output format change 24 hours right before deadline
+        //printf("%d%d\n", index0^Comp[0], index1^Comp[1]);
+
       }
     }
   }
-  if(no_SDC) printf("no sdc\n");
+  if(no_SDC) {
+    printf("no sdc\n");
+  } else {
+    for(int index = 0; index < 4; index++) {
+      if(sdc_result[index] == 1) printf("%d%d ", index/2, index%2);
+    }
+    printf("\n");
+  }
+  
   /*
   l[0] = 1*2;
   l[1] = 2*2;
@@ -588,6 +600,7 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   //printf("var: %d %d \n", var[1], var[2]);
   //printf("COMP : %d%d\n", Comp[0], Comp[1]);
   //printf("var_conearray : %d %d\n", var_conearray[0], var_conearray[1]);
+  int odc_result[4];
   bool no_odc = true;
   lit* l = new lit[3];
   lit* l_cone = new lit[2];
@@ -604,7 +617,9 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     l_cone[1] = var_conearray[1] * 2 + 1;
     if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
-      printf("%d%d\n", 0^Comp[0], 0^Comp[1]);
+      odc_result[(0^Comp[0])*2+(0^Comp[1])] = 1;
+      //stupid output format change 24 hours right before deadline
+      //printf("%d%d\n", 0^Comp[0], 0^Comp[1]);
     } else {
       //printf("%d%d is sdc!\n",  0^Comp[0], 0^Comp[1]);
     }
@@ -621,7 +636,9 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     l_cone[1] = var_conearray[1] * 2;
     if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
-      printf("%d%d\n", 0^Comp[0], 1^Comp[1]);
+      odc_result[(0^Comp[0])*2+(1^Comp[1])] = 1;
+      //stupid output format change 24 hours right before deadline
+      //printf("%d%d\n", 0^Comp[0], 1^Comp[1]);
     } else {
       //printf("%d%d is sdc!\n",  0^Comp[0], 1^Comp[1]);
     }
@@ -637,7 +654,9 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     l_cone[1] = var_conearray[1] * 2 + 1;
     if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
-      printf("%d%d\n", 1^Comp[0], 0^Comp[1]);
+      odc_result[(1^Comp[0])*2+(0^Comp[1])] = 1;
+      //stupid output format change 24 hours right before deadline
+      //printf("%d%d\n", 1^Comp[0], 0^Comp[1]);
     } else {
       //printf("%d%d is sdc!\n",  1^Comp[0], 0^Comp[1]);
     }
@@ -653,14 +672,23 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     l_cone[1] = var_conearray[1] * 2;
     if(sat_solver_solve(sat_conearray, l_cone, l_cone+2, 0, 0, 0, 0) == 1) {
       no_odc = false;
-      printf("%d%d\n", 1^Comp[0], 1^Comp[1]);
+      odc_result[(1^Comp[0])*2+(1^Comp[1])] = 1;
+      //stupid output format change 24 hours right before deadline
+      //printf("%d%d\n", 1^Comp[0], 1^Comp[1]);
     } else {
       //printf("%d%d is sdc!\n",  1^Comp[0], 1^Comp[1]);
     }
   }
 
   //sat->fPrintClause = 1;
-  if(no_odc == true) printf("no odc\n");
+  if(no_odc == true) {
+    printf("no odc\n");
+  }  else {
+    for(int indexx = 0; indexx < 4; indexx++) {
+      if(odc_result[indexx] == 1) printf("%d%d ", indexx/2, indexx%2);
+    }
+    printf("\n");
+  }
   return 0;
 }
 
