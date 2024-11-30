@@ -634,9 +634,8 @@ void Lsv_NtkFindODC(Abc_Ntk_t* pNtk, int n) {
       printf("no odc\n");
     } else {
       for (const auto& pattern : odcPatterns) {
-        printf("%d%d ", pattern.first, pattern.second);
+        printf("%d%d\n", pattern.first, pattern.second);
       }
-      printf("\n");
     }
     
 }
