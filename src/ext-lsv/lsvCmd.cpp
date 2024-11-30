@@ -15,6 +15,7 @@ extern "C"{
 Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
 }
 
+
 using Cut = std::vector<unsigned int>;
 using CutSet = std::set<Cut>;
 
