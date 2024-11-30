@@ -12,120 +12,7 @@ extern "C" {
     Aig_Man_t* Abc_NtkToDar(Abc_Ntk_t* pNtk, int fExors, int fRegisters);
 }
 
-// void PrintConeStructure(Abc_Ntk_t* pCone) {
-//     printf("\nCone Network Structure:\n");
-//     printf("------------------------\n");
-    
-//     printf("Network Statistics:\n");
-//     printf("  Nodes: %d\n", Abc_NtkNodeNum(pCone));
-//     printf("  Primary Inputs: %d\n", Abc_NtkPiNum(pCone));
-//     printf("  Primary Outputs: %d\n", Abc_NtkPoNum(pCone));
-    
-//     Abc_Obj_t* pObj;
-//     int i;
-    
-//     printf("\nPrimary Inputs:\n");
-//     Abc_NtkForEachPi(pCone, pObj, i) {
-//         printf("  PI %d: Name = %s, ID = %d\n", 
-//                i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-//     }
-    
-//     printf("\nNodes:\n");
-//     Abc_NtkForEachNode(pCone, pObj, i) {
-//         printf("  Node %d: Name = %s, ID = %d\n", 
-//                i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-//         printf("    Fanins: ");
-//         Abc_Obj_t* pFanin;
-//         int j;
-//         Abc_ObjForEachFanin(pObj, pFanin, j) {
-//             printf("(%d%s) ", Abc_ObjId(pFanin), 
-//                    Abc_ObjFaninC(pObj, j) ? "'" : "");
-//         }
-//         printf("\n");
-//     }
-    
-//     printf("\nPrimary Outputs:\n");
-//     Abc_NtkForEachPo(pCone, pObj, i) {
-//         printf("  PO %d: Name = %s, ID = %d\n", 
-//                i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-//         printf("    Driver: %d%s\n", 
-//                Abc_ObjId(Abc_ObjFanin0(pObj)),
-//                Abc_ObjFaninC0(pObj) ? "'" : "");
-//     }
-// }
-
-// void PrintAigStructure(Aig_Man_t* pAig) {
-//     printf("\nAIG Structure:\n");
-//     printf("---------------\n");
-//     printf("Statistics:\n");
-//     printf("  Total nodes: %d\n", Aig_ManNodeNum(pAig));
-//     printf("  Total objects: %d\n", Aig_ManObjNum(pAig));
-//     printf("  Constant nodes: %d\n", Aig_ManConst1(pAig) != NULL);
-    
-//     Aig_Obj_t* pObj;
-//     int i;
-    
-//     printf("\nObjects by type:\n");
-//     Aig_ManForEachObj(pAig, pObj, i) {
-//         if (Aig_ObjIsConst1(pObj))
-//             printf("  Const1 node: ID = %d\n", Aig_ObjId(pObj));
-//         else if (Aig_ObjIsCi(pObj))
-//             printf("  CI: ID = %d\n", Aig_ObjId(pObj));
-//         else if (Aig_ObjIsCo(pObj))
-//             printf("  CO: ID = %d, Driver = %d%s\n", 
-//                    Aig_ObjId(pObj), Aig_ObjFaninId0(pObj),
-//                    Aig_ObjFaninC0(pObj) ? "'" : "");
-//         else if (Aig_ObjIsNode(pObj)) {
-//             printf("  AND: ID = %d\n", Aig_ObjId(pObj));
-//             printf("    Fanin0: %d%s\n", 
-//                    Aig_ObjFaninId0(pObj),
-//                    Aig_ObjFaninC0(pObj) ? "'" : "");
-//             printf("    Fanin1: %d%s\n", 
-//                    Aig_ObjFaninId1(pObj),
-//                    Aig_ObjFaninC1(pObj) ? "'" : "");
-//         }
-//     }
-// }
-
-    void PrintCnfClauses(sat_solver* pSat, const std::map<int, int>& nodeToVar, const std::vector<std::vector<lit>>& allClauses) {
-        printf("\nCNF Structure:\n");
-        printf("--------------\n");
-        printf("Total Variables: %d\n", sat_solver_nvars(pSat));
-        
-        printf("\nVariable Mapping (AIG Node -> CNF Variable):\n");
-        for (const auto& pair : nodeToVar) {
-            printf("  AIG Node %d -> CNF Var %d\n", pair.first, pair.second);
-        }
-        
-        printf("\nClauses:\n");
-        for (size_t i = 0; i < allClauses.size(); i++) {
-            printf("Clause %zu: ", i);
-            for (lit literal : allClauses[i]) {
-                int var = lit_var(literal);
-                int sign = lit_sign(literal);
-                
-                // Find corresponding AIG node if it exists
-                int aigNode = -1;
-                for (const auto& pair : nodeToVar) {
-                    if (pair.second == var) {
-                        aigNode = pair.first;
-                        break;
-                    }
-                }
-                
-                if (aigNode != -1) {
-                    printf("%s%d(AIG:%d) ", sign ? "¬" : "", var, aigNode);
-                } else {
-                    printf("%s%d ", sign ? "¬" : "", var);
-                }
-            }
-            printf("\n");
-        }
-    }
-
-bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) {
-    //printf("\nChecking pattern (%d,%d) for node %d\n", val0, val1, Abc_ObjId(pNode));
-    
+bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) { 
     Abc_Ntk_t* pNtk = Abc_ObjNtk(pNode);
     Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pNode);
     Abc_Obj_t* pFanin1 = Abc_ObjFanin1(pNode);
@@ -135,12 +22,10 @@ bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) {
     Vec_PtrPush(vNodes, pFanin1);
     
     Abc_Ntk_t* pCone = Abc_NtkCreateConeArray(pNtk, vNodes, 1);
-    //PrintConeStructure(pCone);
     Vec_PtrFree(vNodes);
     if (!pCone) return true;
     
     Aig_Man_t* pAig = Abc_NtkToDar(pCone, 0, 0);
-    //PrintAigStructure(pAig);
     Abc_NtkDelete(pCone);
     if (!pAig) return true;
     
@@ -218,8 +103,6 @@ bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) {
         int driverId = Aig_ObjFaninId0(pObj);
         int isCompl = Aig_ObjFaninC0(pObj);
         int outVar = nodeToVar[driverId];
-
-        //std::cout << "DriverID: " << driverId << ", isCompl: " << isCompl << ", outVar: " << outVar << ", fanin0Compl: " << fanin0Compl << ", fanin1Compl: " << fanin1Compl << std::endl;
         
         lit Lits[1];
         if (i == 0) {
@@ -240,10 +123,7 @@ bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) {
         }
     }
     
-    //PrintCnfClauses(pSat, nodeToVar, allClauses);
-    
     int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
-    //printf("SAT solver status: %s\n", status == l_True ? "SAT" : "UNSAT");
     
     sat_solver_delete(pSat);
     Aig_ManStop(pAig);
@@ -256,138 +136,6 @@ struct OdcResult {
     bool success;
 };
 
-void PrintMiterStructure(Abc_Ntk_t* pMiter) {
-    printf("\nMiter Network Structure:\n");
-    printf("------------------------\n");
-    printf("Network Statistics:\n");
-    printf("  Nodes: %d\n", Abc_NtkNodeNum(pMiter));
-    printf("  Primary Inputs: %d\n", Abc_NtkPiNum(pMiter));
-    printf("  Primary Outputs: %d\n", Abc_NtkPoNum(pMiter));
-    
-    Abc_Obj_t* pObj;
-    int i;
-    
-    printf("\nPrimary Inputs:\n");
-    Abc_NtkForEachPi(pMiter, pObj, i) {
-        printf("  PI %d: Name = %s, ID = %d\n", 
-               i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-    }
-    
-    printf("\nNodes:\n");
-    Abc_NtkForEachNode(pMiter, pObj, i) {
-        printf("  Node %d: Name = %s, ID = %d\n", 
-               i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-        printf("    Fanins: ");
-        Abc_Obj_t* pFanin;
-        int j;
-        Abc_ObjForEachFanin(pObj, pFanin, j) {
-            printf("(%d%s) ", Abc_ObjId(pFanin), 
-                   Abc_ObjFaninC(pObj, j) ? "'" : "");
-        }
-        printf("\n");
-    }
-}
-
-void PrintAigStructure(Aig_Man_t* pAig) {
-    printf("\nAIG Structure:\n");
-    printf("---------------\n");
-    printf("Statistics:\n");
-    printf("  Total nodes: %d\n", Aig_ManNodeNum(pAig));
-    printf("  Total objects: %d\n", Aig_ManObjNum(pAig));
-    printf("  Constant nodes: %d\n", Aig_ManConst1(pAig) != NULL);
-    
-    Aig_Obj_t* pObj;
-    int i;
-    
-    printf("\nObjects by type:\n");
-    Aig_ManForEachObj(pAig, pObj, i) {
-        if (Aig_ObjIsConst1(pObj))
-            printf("  Const1 node: ID = %d\n", Aig_ObjId(pObj));
-        else if (Aig_ObjIsCi(pObj))
-            printf("  CI: ID = %d\n", Aig_ObjId(pObj));
-        else if (Aig_ObjIsCo(pObj))
-            printf("  CO: ID = %d, Driver = %d%s\n", 
-                   Aig_ObjId(pObj), Aig_ObjFaninId0(pObj),
-                   Aig_ObjFaninC0(pObj) ? "'" : "");
-        else if (Aig_ObjIsNode(pObj)) {
-            printf("  AND: ID = %d\n", Aig_ObjId(pObj));
-            printf("    Fanin0: %d%s\n", 
-                   Aig_ObjFaninId0(pObj),
-                   Aig_ObjFaninC0(pObj) ? "'" : "");
-            printf("    Fanin1: %d%s\n", 
-                   Aig_ObjFaninId1(pObj),
-                   Aig_ObjFaninC1(pObj) ? "'" : "");
-        }
-    }
-}
-
-void PrintCnfInfo(Cnf_Dat_t* pCnf) {
-    printf("\nCNF Structure:\n");
-    printf("--------------\n");
-    printf("Number of variables: %d\n", pCnf->nVars);
-    printf("Number of clauses: %d\n", pCnf->nClauses);
-    printf("\nVariable mapping (AIG Node -> CNF Variable):\n");
-    for (int i = 0; i < pCnf->nVars; i++) {
-        if (pCnf->pVarNums[i] != -1) {
-            printf("  AIG Node %d -> CNF Var %d\n", i, pCnf->pVarNums[i]);
-        }
-    }
-    
-    printf("\nFirst few clauses:\n");
-    for (int i = 0; i < std::min(5, pCnf->nClauses); i++) {
-        printf("Clause %d: ", i);
-        int* pClause = pCnf->pClauses[i];
-        int j = 0;
-        while (pClause[j]) {
-            printf("%s%d ", (pClause[j] & 1) ? "¬" : "", pClause[j]/2);
-            j++;
-        }
-        printf("\n");
-    }
-}
-
-void PrintConeStructure(Abc_Ntk_t* pCone, const char* title) {
-    printf("\n%s Network Structure:\n", title);
-    printf("------------------------\n");
-    printf("Network Statistics:\n");
-    printf("  Nodes: %d\n", Abc_NtkNodeNum(pCone));
-    printf("  Primary Inputs: %d\n", Abc_NtkPiNum(pCone));
-    printf("  Primary Outputs: %d\n", Abc_NtkPoNum(pCone));
-    
-    Abc_Obj_t* pObj;
-    int i;
-    
-    printf("\nPrimary Inputs:\n");
-    Abc_NtkForEachPi(pCone, pObj, i) {
-        printf("  PI %d: Name = %s, ID = %d\n", 
-               i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-    }
-    
-    printf("\nNodes:\n");
-    Abc_NtkForEachNode(pCone, pObj, i) {
-        printf("  Node %d: Name = %s, ID = %d\n", 
-               i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-        printf("    Fanins: ");
-        Abc_Obj_t* pFanin;
-        int j;
-        Abc_ObjForEachFanin(pObj, pFanin, j) {
-            printf("(%d%s) ", Abc_ObjId(pFanin), 
-                   Abc_ObjFaninC(pObj, j) ? "'" : "");
-        }
-        printf("\n");
-    }
-    
-    printf("\nPrimary Outputs:\n");
-    Abc_NtkForEachPo(pCone, pObj, i) {
-        printf("  PO %d: Name = %s, ID = %d\n", 
-               i, Abc_ObjName(pObj), Abc_ObjId(pObj));
-        Abc_Obj_t* pDriver = Abc_ObjFanin0(pObj);
-        printf("    Driver: %d%s\n", 
-               Abc_ObjId(pDriver),
-               Abc_ObjFaninC0(pObj) ? "'" : "");
-    }
-}
-
 // Node mapping structure and helper functions
 typedef struct {
     Vec_Ptr_t* pOrigToAigMap;  // Maps original node IDs to AIG node IDs
@@ -395,10 +143,13 @@ typedef struct {
 } NodeMapping_t;
 
 // Initialize mapping structure
-NodeMapping_t* CreateNodeMapping() {
+NodeMapping_t* CreateNodeMapping(Abc_Ntk_t* pNtk) {
     NodeMapping_t* pMapping = ABC_ALLOC(NodeMapping_t, 1);
-    pMapping->pOrigToAigMap = Vec_PtrStart(1000);
-    pMapping->pAigToOrigMap = Vec_PtrStart(1000);
+    
+    // Add some buffer space
+    int maxId = Abc_NtkObjNumMax(pNtk) * 3; 
+    pMapping->pOrigToAigMap = Vec_PtrStart(maxId);
+    pMapping->pAigToOrigMap = Vec_PtrStart(maxId);
     return pMapping;
 }
 
@@ -439,9 +190,7 @@ int GetAigNodeId(NodeMapping_t* pMapping, int origId) {
 OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     OdcResult result;
     result.success = false;
-    NodeMapping_t* pMapping = CreateNodeMapping();
-    
-    //printf("\n=== Starting ODC Calculation for Node %d ===\n", Abc_ObjId(pNode));
+    NodeMapping_t* pMapping = CreateNodeMapping(pNtk);
 
     // Store original fanin information
     Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pNode);
@@ -470,21 +219,12 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     Abc_Obj_t* pFanout;
     int i;
     
-    //printf("\nSecond Network Before Complementation:\n");
-    //PrintConeStructure(pNtk2, "Second");
-    
     // Complement the fanout of our target node
     Abc_ObjForEachFanout(pNode2, pFanout, i) {
-        //printf("Complementing fanout %d of node %d\n", 
-               //Abc_ObjId(pFanout), Abc_ObjId(pNode2));
         Abc_ObjXorFaninC(pFanout, Abc_ObjFanoutFaninNum(pFanout, pNode2));
     }
     
-    //printf("\nSecond Network After Complementation:\n");
-    //PrintConeStructure(pNtk2, "Second");
-    
     // Create miter network
-    //printf("\nCreating miter network\n");
     Abc_Ntk_t* pMiter = Abc_NtkMiter(pNtk1, pNtk2, 1, 0, 0, 0);
     if (!pMiter) {
         Abc_NtkDelete(pNtk1);
@@ -492,7 +232,6 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
         DeleteNodeMapping(pMapping);
         return result;
     }
-    //PrintMiterStructure(pMiter);
     
     // Convert to AIG with mapping
     Aig_Man_t* pAig = Abc_NtkToDarWithMapping(pMiter, pMapping);
@@ -503,7 +242,6 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
         DeleteNodeMapping(pMapping);
         return result;
     }
-    //PrintAigStructure(pAig);
 
     // Set up SAT solver
     sat_solver* pSat = sat_solver_new();
@@ -603,11 +341,6 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
         }
     }
 
-    // Step 6: Print CNF clauses for debugging
-    //PrintCnfClauses(pSat, nodeToVar, allClauses);
-
-    // Step 7: Find all care patterns using ALLSAT
-    //printf("\nFinding non-ODC patterns\n");
     std::set<std::pair<int, int>> foundPatterns;
 
     // Check if we only have constant nodes or invalid clauses
@@ -623,7 +356,6 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     }
     
     if (hasOnlyConstantNodes) {
-        //printf("Only constant nodes in SAT instance - no ODC patterns possible\n");
         // Cleanup
         sat_solver_delete(pSat);
         Aig_ManStop(pAig);
@@ -644,12 +376,7 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             int aigFanin0Id = GetAigNodeId(pMapping, fanin0Id);
             int aigFanin1Id = GetAigNodeId(pMapping, fanin1Id);
             
-            //printf("Mapping verification:\n");
-            //printf("Original fanin0 (ID: %d) -> AIG node (ID: %d)\n", fanin0Id, aigFanin0Id);
-            //printf("Original fanin1 (ID: %d) -> AIG node (ID: %d)\n", fanin1Id, aigFanin1Id);
-            
             if (aigFanin0Id == -1 || aigFanin1Id == -1) {
-                //printf("Error: Failed to map original nodes to AIG nodes\n");
                 break;
             }
             
@@ -657,21 +384,13 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             int var0 = nodeToVar[aigFanin0Id];
             int var1 = nodeToVar[aigFanin1Id];
             
-            //printf("AIG to SAT variable mapping:\n");
-            //printf("AIG node %d -> SAT var %d\n", aigFanin0Id, var0);
-            //printf("AIG node %d -> SAT var %d\n", aigFanin1Id, var1);
-            
             if (var0 == 0 || var1 == 0) {
-                printf("Error: Invalid SAT variable mapping\n");
                 continue;
             }
             
             // Get current assignment
             int val0 = sat_solver_var_value(pSat, var0);
             int val1 = sat_solver_var_value(pSat, var1);
-            
-            //printf("Current assignment before complement adjustment:\n");
-            //printf("var%d = %d, var%d = %d\n", var0, val0, var1, val1);
             
             // Apply complemented edges adjustment only for output display
             int displayVal0 = isCompl0 ? !val0 : val0;
@@ -680,9 +399,6 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             // Store pattern using original SAT values
             std::pair<int, int> pattern = {displayVal0, displayVal1};
             
-            //printf("Final values after complement adjustment (for display):\n");
-            //printf("val0 = %d, val1 = %d\n", displayVal0, displayVal1);
-            
             if (foundPatterns.find(pattern) == foundPatterns.end()) {
                 foundPatterns.insert(pattern);
                 result.odcPatterns.push_back(pattern);
@@ -690,24 +406,16 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
                 // Create blocking clause using original SAT values
                 Vec_Int_t* vLits = Vec_IntAlloc(2);
                 
-                //printf("Adding blocking clause:\n");
-                //printf("Literal 1: var %d = %d\n", var0, val0);
-                //printf("Literal 2: var %d = %d\n", var1, val1);
-                
                 Vec_IntPush(vLits, Abc_Var2Lit(var0, val0));
                 Vec_IntPush(vLits, Abc_Var2Lit(var1, val1));
                 
                 if (!sat_solver_addclause(pSat, Vec_IntArray(vLits), 
                     Vec_IntArray(vLits) + Vec_IntSize(vLits))) {
-                    //printf("Failed to add blocking clause\n");
                     Vec_IntFree(vLits);
                     break;
                 }
-                
-                //printf("Successfully added blocking clause\n");
                 Vec_IntFree(vLits);
             } else {
-                //printf("Pattern already found, terminating search\n");
                 break;
             }
         }
