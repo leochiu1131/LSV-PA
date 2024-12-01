@@ -1,0 +1,7 @@
+read blif/test_PA2.blif
+strash
+lsv_odc 4
+lsv_odc 5
+lsv_odc 6
+lsv_odc 7
+lsv_odc 8

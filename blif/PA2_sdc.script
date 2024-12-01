@@ -1,0 +1,3 @@
+read blif/test_PA2.blif
+strash
+lsv_sdc 7
