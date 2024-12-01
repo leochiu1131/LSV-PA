@@ -1,0 +1,24 @@
+.model comp
+.inputs x0 x1 x2 x3 x4
+.outputs y2 y1 y0
+# We add 5 inputs with a 1 bit adder
+.subckt adder a=x0 b=x1 cin=x2 s=S1 cout=C1
+.subckt adder a=x3 b=x4 cin=0 s=S2 cout=C2
+# We add both results with a 2 bit adder
+.subckt adder a=S1 b=S2 cin=0 s=y0 cout=C3
+.subckt adder a=C1 b=C2 cin=C3 s=y1 cout=y2
+.end
+
+.model adder 
+.inputs a b cin
+.outputs s cout
+.names a b cin s
+001 1
+010 1
+100 1
+111 1
+.names a b cin cout
+11- 1
+1-1 1
+-11 1
+.end
