@@ -1,0 +1,16 @@
+.model ex
+.inputs x0 x1
+.outputs y0
+.names x0 x1 a
+11 1
+.names x0 x1 b
+00 1
+.names a b c
+00 1
+.names a b d
+10 1
+.names c d e
+01 1
+.names e y0
+1 1
+.end
