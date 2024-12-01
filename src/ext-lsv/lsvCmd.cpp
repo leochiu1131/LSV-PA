@@ -194,7 +194,7 @@ bool SATbaseCheck(Abc_Ntk_t* pNtk, int i, int pattern){
 
   int var0 = pCnf -> pVarNums[Aig_ObjId(Aig_ManCi(pAig, 0))];
   int var1 = pCnf -> pVarNums[Aig_ObjId(Aig_ManCi(pAig, 1))];
-  int assumptions[2] = {Abc_Var2Lit(var0, !v0), Abc_Var2Lit(var1, !v1)};
+  int assumptions[2] = {Abc_Var2Lit(var0, v0), Abc_Var2Lit(var1, v1)};
 
   int status = sat_solver_solve(pSat, assumptions, assumptions + 2, 100, 100, 100, 100);
   sat_solver_delete(pSat);
@@ -206,7 +206,7 @@ bool SATbaseCheck(Abc_Ntk_t* pNtk, int i, int pattern){
 }
 
 void Lsv_NtkComputeSDC(Abc_Ntk_t* pNtk, int i){
-  int num_pattern = 100;
+  int num_pattern = 5000;
   std::unordered_set<int> patterns;
   patterns = RandomSimulation(pNtk, i, num_pattern);
   
@@ -222,7 +222,7 @@ void Lsv_NtkComputeSDC(Abc_Ntk_t* pNtk, int i){
   bool flag = 0;
   for(int p : missingPatterns){
     bool isUNSAT = SATbaseCheck(pNtk, i, p);
-    std::cout << "isUNSAT: " << isUNSAT << "\n";
+    //std::cout << "isUNSAT: " << isUNSAT << "\n";
     if(isUNSAT){
       int v0 = p / 2;
       int v1 = p % 2;
@@ -269,8 +269,131 @@ int Lsv_CommandComputeSDC(Abc_Frame_t* pAbc, int argc, char** argv){
 
 //Compute ODC
 
-void Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int i){
-  std::cout << "Compute ODC.\n";
+std::unordered_set<int> Lsv_NodeSDC(Abc_Ntk_t* pNtk, int i){
+  std::unordered_set<int> o;
+  int num_pattern = 5000;
+  std::unordered_set<int> patterns;
+  patterns = RandomSimulation(pNtk, i, num_pattern);
+  
+
+  std::vector<int> allPatterns = {0,1,2,3};
+  std::vector<int> missingPatterns;
+  for(int p : allPatterns){
+    if(patterns.find(p) == patterns.end()){
+      missingPatterns.push_back(p);
+    }
+  }
+
+  //bool flag = 0;
+  for(int p : missingPatterns){
+    bool isUNSAT = SATbaseCheck(pNtk, i, p);
+    //std::cout << "isUNSAT: " << isUNSAT << "\n";
+    if(isUNSAT){
+      o.insert(p);
+      int v0 = p / 2;
+      int v1 = p % 2;
+      //std::cout << v0 << v1 << "\n";
+      //flag = 1;
+    }
+  }
+  return o;
+}
+
+void Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int k){
+  //std::cout << "Compute ODC.\n";
+  Abc_Ntk_t *pNegNtk = Abc_NtkDup(pNtk);
+    Abc_Obj_t *pCompNode = Abc_NtkObj(pNegNtk, k);
+    Abc_Obj_t *pFanout;
+    Abc_Obj_t *pNode = Abc_NtkObj(pNtk,k);
+
+    int i;
+    Abc_ObjForEachFanout(pCompNode, pFanout, i){
+        Abc_Obj_t *pFanin;
+        int j;
+        Abc_ObjForEachFanin(pFanout, pFanin, j){
+            if (pFanin == pCompNode){
+                Abc_ObjXorFaninC(pFanout, j);
+            }
+        }
+    }
+
+    Abc_Ntk_t *pMiterNtk = Abc_NtkMiter(pNtk, pNegNtk, 1, 0, 0, 0);
+    Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pNode);
+    Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pNode);
+
+    Vec_Ptr_t *vfanin = Vec_PtrAlloc(2);
+    Vec_PtrPush(vfanin, pFanin0);
+    Vec_PtrPush(vfanin, pFanin1);
+    Abc_Ntk_t *pConeNtk = Abc_NtkCreateConeArray(pNtk, vfanin, 1);
+
+    Abc_NtkAppend(pMiterNtk, pConeNtk, 1);
+    Aig_Man_t *pAig = Abc_NtkToDar(pMiterNtk, 0, 0);
+
+    sat_solver *pSat = sat_solver_new();
+    Cnf_Dat_t *pCnf = Cnf_Derive(pAig, Abc_NtkPoNum(pMiterNtk));
+    Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
+    int var1 = pCnf->pVarNums[Aig_ManCo(pAig, 0)->Id];
+    int var2 = pCnf->pVarNums[Aig_ManCo(pAig, 1)->Id];
+    int var3 = pCnf->pVarNums[Aig_ManCo(pAig, 2)->Id];
+
+    lit assumption[1];
+    assumption[0] = Abc_Var2Lit(var1, 0);
+    sat_solver_addclause(pSat, assumption, assumption + 1);
+    int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+
+    std::vector<int> dontcare;
+    dontcare.resize(4);
+    for(int x = 0;x < dontcare.size();++x){
+      dontcare[x] = 0;
+    }
+  /*
+    for(int x = 0;x < dontcare.size();++x){
+      std::cout << dontcare[x] << "\n";
+    }*/
+
+    while (status == l_True){
+        int value1 = sat_solver_var_value(pSat, var2);
+        int value2 = sat_solver_var_value(pSat, var3);
+        int assumptions[2] = {Abc_Var2Lit(var2, value1), Abc_Var2Lit(var3, value2)};
+        int v0 = value1, v1 = value2;
+        if (Abc_ObjFaninC0(pNode))
+            v0 = 1-v0;
+        if (Abc_ObjFaninC1(pNode))
+            v1 = 1-v1;
+
+        dontcare[2*v0 + v1] = 1;
+        if (!sat_solver_addclause(pSat, assumptions, assumptions + 2)){
+          break;
+        }
+            
+        status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+    }
+
+ /*
+    for(int x = 0;x < dontcare.size();++x){
+      std::cout << dontcare[x] << "\n";
+    }*/
+
+    bool flag = false;
+    for (int x = 0; x < dontcare.size(); x++)
+    {
+        if (dontcare[x] == 0)
+        {
+            int first = x / 2;
+            int second = x % 2;
+            std::unordered_set<int> sdc_set;
+            sdc_set = Lsv_NodeSDC(pNtk,k); 
+            if (sdc_set.find(x) == sdc_set.end())
+            {
+                std::cout << first << second << " ";
+                flag = true;
+            }
+        }
+    }
+    // cout << count;
+    if (!flag)
+        std::cout << "no odc";
+    std::cout << std::endl;
 }
 
 int Lsv_CommandComputeODC(Abc_Frame_t* pAbc, int argc, char** argv){
@@ -337,8 +460,8 @@ void ComputeSDC(Abc_Ntk_t* pNtk, std::ofstream& fout){
       if(isUNSAT){
         int v0 = p / 2;
         int v1 = p % 2;
-        fout << v0 << v1 << "\n";
         std::cout << v0 << v1 << "\n";
+        fout << v0 << v1 << "\n";
         //flag = 1;
         cnt++;
         
@@ -348,8 +471,8 @@ void ComputeSDC(Abc_Ntk_t* pNtk, std::ofstream& fout){
     tcnt += cnt;
     //missingPatterns.clear();
   }
-  fout << "Ntk total don't care: " << tcnt << "\n";
   std::cout << "Ntk total don't care: " << tcnt << "\n";
+  fout << "Ntk total don't care: " << tcnt << "\n";
 }
 
 //total dc in the circuit
@@ -382,7 +505,7 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv){
     }
   }
 */
-  ComputeSDC(pNtk, fout);
+  ComputeSDC(pNtk,fout);
   return 0;
 }
 
