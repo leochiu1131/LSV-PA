@@ -1,2 +1,2 @@
 SRC += \
-    src/ext-lsv/k_feasible.cpp
+    src/ext-lsv/sdc.cpp
