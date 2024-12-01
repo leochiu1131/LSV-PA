@@ -259,27 +259,70 @@ int * RandomSimulation(Abc_Ntk_t * pNtk, int * pModel)
 }
 
 int checksat(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj, int value0, int value1) {
-  Aig_Man_t * pFanin0cone = Abc_NtkToDar(Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pObj), "Fanin0cone", 0), 0, 0);
-  Aig_Man_t * pFanin1cone = Abc_NtkToDar(Abc_NtkCreateCone(pNtk, Abc_ObjFanin1(pObj), "Fanin1cone", 0), 0, 0);
+  Aig_Man_t * pFanin0cone = Abc_NtkToDar(Abc_NtkCreateCone(pNtk, Abc_ObjFanin0(pObj), "Fanin0cone", 1), 0, 0);
+  Aig_Man_t * pFanin1cone = Abc_NtkToDar(Abc_NtkCreateCone(pNtk, Abc_ObjFanin1(pObj), "Fanin1cone", 1), 0, 0);
   sat_solver * pSat = sat_solver_new();
   Cnf_Dat_t * pCnf0 = Cnf_Derive(pFanin0cone, 1);
   Cnf_Dat_t * pCnf1 = Cnf_Derive(pFanin1cone, 1);
   Cnf_DataWriteIntoSolverInt(pSat, pCnf0, 1, 0);
   Cnf_DataLift(pCnf1, pCnf0->nVars - 1);
   Cnf_DataWriteIntoSolverInt(pSat, pCnf1, 1, 0);
-  int pLits[1]
-  pLits[0] = toLitCond(pCnf0->pVarNums[Abc_ObjId(Abc_ObjFanin0(pObj))], value0);
-  sat_solver_addclause(pSat, pLits, pLits + 1);
-  pLits[0] = toLitCond(pCnf1->pVarNums[Abc_ObjId(Abc_ObjFanin1(pObj))], value1);
-  sat_solver_addclause(pSat, pLits, pLits + 1);
+
+  Aig_Obj_t * pObj1;
   int i;
-  int pLits[2];
-  Aig_ManForEachCi(pFanin0cone, pObj0, i) {
-    pLits[0] = toLitCond(pCnf0->pVarNums[Abc_ObjId(pObj0)], 0);
-    sat_solver_addclause(pSat, pLits, pLits + 1);
+  Aig_ManForEachObj(pFanin0cone, pObj1, i){
+    printf("%d = %d\n", Aig_ObjId(pObj1), pCnf0->pVarNums[Aig_ObjId(pObj1)]);
   }
+  Aig_ManForEachObj(pFanin1cone, pObj1, i){
+    printf("%d = %d\n", Aig_ObjId(pObj1), pCnf1->pVarNums[Aig_ObjId(pObj1)]);
+  }
+  for (int i = 0; i < pCnf0->nClauses; i++){
+    for (int j = 0; j < 6; j++){
+      printf("%d ", pCnf0->pClauses[i][j]);
+    }
+    printf("\n");
+  }
+  for (int i = 0; i < pCnf1->nClauses; i++){
+    for (int j = 0; j < 6; j++){
+      printf("%d ", pCnf1->pClauses[i][j]);
+    }
+    printf("\n");
+  }
+
+  int pLits0[1];
+  if ((int)Abc_ObjFaninC0(pObj) == 0) {
+    pLits0[0] = toLitCond(pCnf0->pVarNums[Aig_ObjId(Aig_ManCo(pFanin0cone, 0))], value0 ^ 1);
+  }else{
+    pLits0[0] = toLitCond(pCnf0->pVarNums[Aig_ObjId(Aig_ManCo(pFanin0cone, 0))], value0);
+  }
+  sat_solver_addclause(pSat, pLits0, pLits0 + 1);
+  printf("%d\n", pLits0[0]);
+  if ((int)Abc_ObjFaninC1(pObj) == 0) {
+    pLits0[0] = toLitCond(pCnf1->pVarNums[Aig_ObjId(Aig_ManCo(pFanin1cone, 0))], value1 ^ 1);
+  }else{
+    pLits0[0] = toLitCond(pCnf1->pVarNums[Aig_ObjId(Aig_ManCo(pFanin1cone, 0))], value1);
+  }
+  sat_solver_addclause(pSat, pLits0, pLits0 + 1);
+  printf("%d\n", pLits0[0]);
+  //int i;
+  int pLits1[2];
+  Abc_Obj_t * pObj0;
+  Abc_NtkForEachCi(pNtk, pObj0, i) {
+    printf("%d = %d\n", Abc_ObjId(pObj0), pCnf0->pVarNums[Abc_ObjId(pObj0)]);
+    pLits1[0] = toLitCond(pCnf0->pVarNums[Abc_ObjId(pObj0)], 0);
+    pLits1[1] = toLitCond(pCnf1->pVarNums[Abc_ObjId(pObj0)], 1);
+    printf("%d %d\n", pLits1[0], pLits1[1]);
+    sat_solver_addclause(pSat, pLits1, pLits1 + 2);
+    pLits1[0] = toLitCond(pCnf1->pVarNums[Abc_ObjId(pObj0)], 0);
+    pLits1[1] = toLitCond(pCnf0->pVarNums[Abc_ObjId(pObj0)], 1);
+    printf("%d %d\n", pLits1[0], pLits1[1]);
+    sat_solver_addclause(pSat, pLits1, pLits1 + 2);
+  }
+
   
-  int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
+  
+  int status = sat_solver_solve(pSat, NULL, NULL, 1000, 1000, 1000, 1000);
+  printf("%d\n", status);
   sat_solver_delete(pSat);
   return status;
 }
@@ -318,7 +361,7 @@ int Lsv_CommandPrintSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
     printf("no sdc\n");
     return 0;
   }
-  Abc_Ntk_t * pCone = Abc_NtkCreateCone(pNtk, pObj, "cone", 0);
+  Abc_Ntk_t * pCone = Abc_NtkCreateCone(pNtk, pObj, "cone", 1);
   int * pModel = new int[Abc_NtkCiNum(pCone)];
   for (int i = 0; i < pow(2, std::min(Abc_NtkCiNum(pCone), 32)); i++) {
     for (int j = 0; j < Abc_NtkCiNum(pCone); j++) {
@@ -326,46 +369,47 @@ int Lsv_CommandPrintSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
   }
   int * pValues = RandomSimulation(pCone, pModel);
-  printf("%d %d\n", pValues[0], pValues[1]);
 
   int num00=0, num01=0, num10=0, num11=0;
   int pValue0, pValue1;
   for (int i = 0; i < pow(2, std::min(Abc_NtkCiNum(pCone), 32)); i++) {
-    pValue0 = pValues[0]%2;
-    pValue1 = pValues[1]%2;
-    pValues[0] = pValues[0] >> 1;
-    pValues[1] = pValues[1] >> 1;
+    pValue0 = pValues[0] & (1 << i);
+    pValue1 = pValues[1] & (1 << i);
     if (pValue0 == 0 && pValue1 == 0) {
       num00++;
-    }else if (pValue0 == 0 && pValue1 == 1) {
+    }else if (pValue0 == 0 && pValue1 != 0) {
       num01++;
-    }else if (pValue0 == 1 && pValue1 == 0) {
+    }else if (pValue0 != 0 && pValue1 == 0) {
       num10++;
-    }else if (pValue0 == 1 && pValue1 == 1) {
+    }else if (pValue0 != 0 && pValue1 != 0) {
       num11++;
     }
   }
   bool sdc00 = false , sdc01 = false, sdc10 = false, sdc11 = false;
   if (num00 == 0){
-    if (!checksat(pNtk, pObj, 0, 0)){
+    printf("00 ");
+    if (checksat(pNtk, pObj, 0, 0) == -1){
       sdc00 = true;
       printf("00 ");
     }
   }
   if (num01 == 0){
-    if (!checksat(pNtk, pObj, 0, 1)){
+    printf("01 ");
+    if (checksat(pNtk, pObj, 0, 1) == -1){
       sdc01 = true;
       printf("01 ");
     }
   }
   if (num10 == 0){
-    if (!checksat(pNtk, pObj, 1, 0)){
+    printf("10 ");
+    if (checksat(pNtk, pObj, 1, 0) == -1){
       sdc10 = true;
       printf("10 ");
     }
   }
   if (num11 == 0){
-    if (!checksat(pNtk, pObj, 1, 1)){
+    printf("11 ");
+    if (checksat(pNtk, pObj, 1, 1) == -1){
       sdc11 = true;
       printf("11 ");
     }
