@@ -37,7 +37,7 @@ For example, when inputs are 10011, output Y = (011), i.e. binary number of 3, b
 
 ### 3. [ABC Boolean Function Representations] (10%)  
 In ABC there are different ways to represent Boolean functions.  
-(a) Compare the following differences with the two-bit unsigned multiplier example. Screenshot the results and briefly describe your findings in your report.
+(a) Compare the following differences with your `comp.blif`. Screenshot the results and briefly describe your findings in your report.
 1. logic network in AIG (by command `aig`) vs.
 structurally hashed AIG (by command `strash`)
 2. logic network in BDD (by command `bdd`) vs.
