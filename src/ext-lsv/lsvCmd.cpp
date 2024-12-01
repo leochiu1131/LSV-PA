@@ -1,16 +1,24 @@
 #include <iostream>
 #include <vector>
+#include <fstream>
 #include "base/abc/abc.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
+#include "sat/cnf/cnf.h"
+#include "aig/aig/aig.h"
+extern "C"{
+ Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters);
+}
 using namespace std;
 
-static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
-
+static int Lsv_sdc(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_odc(Abc_Frame_t* pAbc, int argc, char** argv);
+static int PrintAIGasDAG(Abc_Frame_t* pAbc, int argc, char** argv);
 void init(Abc_Frame_t* pAbc) {
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintNodes, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_sdc, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_odc, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "write_aigraph", PrintAIGasDAG, 0);
 }
-
 void destroy(Abc_Frame_t* pAbc) {}
 
 Abc_FrameInitializer_t frame_initializer = {init, destroy};
@@ -19,162 +27,191 @@ struct PackageRegistrationManager {
   PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer); }
 } lsvPackageRegistrationManager;
 
-void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk, int &max) {
-  Abc_Obj_t* pObj;
-  int i;
-  Abc_NtkForEachNode(pNtk, pObj, i) {
-  	if(max<Abc_ObjId(pObj)){
-  		max=Abc_ObjId(pObj);
-	  }
-  }
+int getSize(Abc_Ntk_t* pNtk){
+	Abc_Obj_t* pObj;
+	int i;
+	Abc_NtkForEachObj(pNtk, pObj, i){}
+	return i;
 }
-vector<int> Union(vector<int> a, vector<int> b){
-	vector<int> c; int A=0; int B=0;
-	while(A<a.size()&&B<b.size()){
-		if(a[A]>b[B]){
-			c.push_back(b[B]); B+=1;
-		}
-		else if(a[A]<b[B]){
-			c.push_back(a[A]); A+=1;
-		}
-		else if(a[A]==b[B]){
-			c.push_back(a[A]); A+=1; B+=1;
-		}
-	}
-	while(A<a.size()){
-		c.push_back(a[A]); A+=1;
-	}
-	while(B<b.size()){
-		c.push_back(b[B]); B+=1;
-	}
-	return c;
-}
-bool include(vector<int> a, vector<int> b){
-	int A=0; int B=0;
-	if(a==b){
-		return false;
-	}
-	while(A<a.size()&&B<b.size()){
-		if(a[A]>b[B]){
-			B+=1; return false;
-		}
-		else if(a[A]<b[B]){
-			A+=1;
-		}
-		else if(a[A]==b[B]){
-			A+=1; B+=1;
-		}
-	}
-	if(B<b.size()){
-		return false;
-	}
-	return true;
-}
-vector<vector<int>> redundant(vector<vector<int>> a){
-	vector<bool> keep;
-	for(int i=0;i<a.size();i++){
-		keep.push_back(true);
-	}
-	for(int i=0;i<a.size();i++){
-		for(int j=0;j<a.size();j++){
-			if(include(a[i],a[j])){
-				keep[j] = false;
-			}
-			if(a[i]==a[j] && i>j){
-				keep[i] = false;
-			}
-		}
-	}
-	vector<vector<int>> result;
-	for(int i=0;i<a.size();i++){
-		if(keep[i]){
-			result.push_back(a[i]);
-		}
-	}
-	return result;
-}
-vector<vector<vector<int>>> baseCase(int length){
-	vector<vector<vector<int>>> cuts;
-	for(int i=0;i<length;i++){
-		cuts.push_back({{i}});
-	}
-	return cuts;
-}
-void Incremental(Abc_Ntk_t* pNtk, vector<vector<vector<int>>> &possibleCuts, int limit) {
-  Abc_Obj_t* pObj;
-  int i; 
-  Abc_NtkForEachNode(pNtk, pObj, i) {
-  	vector<int> node;
-    node.push_back(Abc_ObjId(pObj));
-    Abc_Obj_t* pFanin;
-    int j;
-    Abc_ObjForEachFanin(pObj, pFanin, j) {
-    	node.push_back(Abc_ObjId(pFanin));
-    }
-    for(int k=0;k<possibleCuts[node[1]].size();k++){
-    	for(int l=0;l<possibleCuts[node[2]].size();l++){
-    		vector<int> un = Union(possibleCuts[node[1]][k],possibleCuts[node[2]][l]);
-    		if(un.size()<=limit){
-    			possibleCuts[node[0]].push_back(un);
-			}
-		}
-	}
-	possibleCuts[node[0]] = redundant(possibleCuts[node[0]]);
-  }
-}
-vector<bool> existance(Abc_Ntk_t* pNtk, int max){
-	vector<bool> result;
-	for(int i=0;i<max;i++){
-		result.push_back(false);
-	}
-  Abc_Obj_t* pObj;
-  int i; 
-  Abc_NtkForEachNode(pNtk, pObj, i) {
-    result[Abc_ObjId(pObj)] = true;
-    Abc_Obj_t* pFanin;
-    int j;
-    Abc_ObjForEachFanin(pObj, pFanin, j) {
-    	result[Abc_ObjId(pFanin)] = true;
-    }
-  }
-  return result;
-}
-int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
-  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  int c; int max = 0; vector<vector<vector<int>>> possibleCuts; vector<bool> exist;
-  Extra_UtilGetoptReset();
-  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
-    switch (c) {
-      case 'h':
-        goto usage;
-      default:
-        goto usage;
-    }
-  }
-  if (!pNtk) {
-    Abc_Print(-1, "Empty network.\n");
-    return 1;
-  }
-  Lsv_NtkPrintNodes(pNtk,max);
-  exist = existance(pNtk,max);
-  possibleCuts = baseCase(max);
-  Incremental(pNtk,possibleCuts,atoi(argv[1]));
-  for(int i=0;i<possibleCuts.size();i++){
-  	if(exist[i]){
-	    for(int j=0;j<possibleCuts[i].size();j++){
-	    	cout<<i<<": ";
-	  		for(int k=0;k<possibleCuts[i][j].size();k++){
-	  			cout<<possibleCuts[i][j][k]<<" ";
-			  	}
-			  	cout<<endl;
-		  	}		
-	  	}
+void Lsv_NtkPrintGates(Abc_Ntk_t* pNtk){
+  	Abc_Obj_t* pObj;
+  	int i;
+  	Abc_NtkForEachObj(pNtk, pObj, i){
+    	printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
+    	Abc_Obj_t* pFanin;
+    	int j;
+    	Abc_ObjForEachFanin(pObj, pFanin, j) {
+      	printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
+            Abc_ObjName(pFanin));
+    	}
   	}
-  return 0;
+}
+int PrintAIGasDAG(Abc_Frame_t* pAbc, int argc, char** argv){
+	ofstream fout(argv[1]);
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  	Abc_Obj_t* pObj;
+  	int i;
+  	Abc_NtkForEachObj(pNtk, pObj, i){
+    	Abc_Obj_t* pFanin;
+    	int j;
+    	Abc_ObjForEachFanin(pObj, pFanin, j) {
+    		if(j==0){
+    			fout<<Abc_ObjId(pObj)<<" "<<Abc_ObjId(pFanin)<<" "<<pObj->fCompl0<<endl;
+			}
+			else{
+				fout<<Abc_ObjId(pObj)<<" "<<Abc_ObjId(pFanin)<<" "<<pObj->fCompl1<<endl;
+			}
+    	}
+  	}
+  	return 0;
+}
+int Lsv_sdc(Abc_Frame_t* pAbc, int argc, char** argv){
+	Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+	int TargetNode = atoi(argv[1]);
+	Abc_Obj_t* pNode = Abc_NtkObj(pNtk,TargetNode);
+	Abc_Ntk_t* FICone = Abc_NtkCreateCone(pNtk,pNode,Abc_ObjName(pNode),1);
+	Abc_Obj_t* ConeTop = Abc_NtkPo(FICone,0);
+	Abc_Obj_t* ConeSecond = ConeTop;
+	int j;
+	Abc_ObjForEachFanin(ConeTop, ConeSecond, j) {}
+	bool sdc_exist = false;
+	vector<unsigned int> oc = {ConeSecond -> fCompl0,ConeSecond -> fCompl1};
+	for(int i=0;i<4;i++){
+		ConeSecond -> fCompl0 = i%2;
+		ConeSecond -> fCompl1 = i/2;
+		Aig_Man_t* pMan = Abc_NtkToDar(FICone,0,0);
+		sat_solver* pSAT = sat_solver_new();
+		Cnf_Dat_t * pCNF = Cnf_Derive(pMan, 1);
+		Cnf_DataWriteIntoSolverInt(pSAT,pCNF,1,0);
+	
+		lit assumption[] = {4};
+		lit* begin = assumption;
+		lit* end = assumption+1;
+		int satisfiability = sat_solver_solve(pSAT, begin, end, 1000, 1000, 1000, 1000);
+		if(satisfiability<0){
+	  		printf("%d%d ",1-(oc[0] ^ ConeSecond -> fCompl0),1-(oc[1] ^ ConeSecond -> fCompl1));
+	  		sdc_exist = true;
+		}
+	}
+	if(!sdc_exist){
+  		printf("no sdc\n");
+	}
+	else{
+  		printf("\n");
+	}
+  	int c;
+  	Extra_UtilGetoptReset();
+  	while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF){
+    	switch (c) {
+      		case 'h':
+        		goto usage;
+    	default:
+        	goto usage;
+    	}
+	}
+	if (!pNtk) {
+    	Abc_Print(-1, "Empty network.\n");
+    	return 1;
+	}
+	return 0;
 
-usage:
-  Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
-  Abc_Print(-2, "\t        prints the nodes in the network\n");
-  Abc_Print(-2, "\t-h    : print the command usage\n");
-  return 1;
+	usage:
+  		Abc_Print(-2, "usage: lsv_print_nodes [-h]\n");
+  		Abc_Print(-2, "\t        prints the nodes in the network\n");
+  		Abc_Print(-2, "\t-h    : print the command usage\n");
+  	return 1;
+}
+Abc_Obj_t* GetConst1(Abc_Ntk_t* pNtk){
+	int i;
+	Abc_Obj_t* pObj;
+	Abc_NtkForEachObj(pNtk, pObj, i){
+		return pObj;
+	}
+	return pObj;
+}
+int Lsv_odc(Abc_Frame_t* pAbc, int argc, char** argv){
+	Abc_Ntk_t* pNtk_0 = Abc_FrameReadNtk(pAbc);
+	Abc_Ntk_t* pNtk = Abc_NtkDup(pNtk_0);
+	Abc_Ntk_t* pNtk_new = Abc_NtkDup(pNtk_0);
+  	Abc_Obj_t* pObj;
+  	int i;
+  	Abc_NtkForEachObj(pNtk_new, pObj, i){
+    	Abc_Obj_t* pFanin; int j;
+    	Abc_ObjForEachFanin(pObj, pFanin, j){
+    		if(Abc_ObjId(pFanin)==atoi(argv[1])){
+    			if(j==0){
+    				pObj->fCompl0 = 1 - pObj->fCompl0;
+				}
+    			if(j==1){
+    				pObj->fCompl1 = 1 - pObj->fCompl1;
+				}				
+			}
+    	}
+  	}
+	int TargetNode = atoi(argv[1]);
+	Abc_Obj_t* pNode = Abc_NtkObj(pNtk,TargetNode);
+	Abc_Obj_t* pChild; int j; Abc_Ntk_t* FICone0; Abc_Ntk_t* FICone1;
+	Abc_ObjForEachFanin(pNode, pChild, j){
+		if(j==0){FICone0 = Abc_NtkCreateCone(pNtk,pChild,Abc_ObjName(pChild),1);}
+		if(j==1){FICone1 = Abc_NtkCreateCone(pNtk,pChild,Abc_ObjName(pChild),1);}
+	}
+	Aig_Man_t* Manf0 = Abc_NtkToDar(FICone0,0,0);
+	Aig_Man_t* Manf1 = Abc_NtkToDar(FICone0,0,0);
+	Aig_Man_t* pMan = Abc_NtkToDar(pNtk,0,0);
+	Aig_Man_t* pMan_new = Abc_NtkToDar(pNtk_new,0,0);
+	sat_solver* pSAT_sdc = sat_solver_new();
+	sat_solver* pSAT = sat_solver_new();
+	Cnf_Dat_t * CNFf0 = Cnf_Derive(Manf0, Aig_ManCoNum(Manf0));
+	Cnf_Dat_t * CNFf1 = Cnf_Derive(Manf1, Aig_ManCoNum(Manf1));
+	Cnf_Dat_t * pCNF = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
+	Cnf_Dat_t * pCNF_new = Cnf_Derive(pMan_new, Aig_ManCoNum(pMan_new));
+	Cnf_DataLift(pCNF_new, pCNF->nVars);
+	Cnf_DataLift(CNFf0, pCNF->nVars + pCNF_new->nVars);
+	Cnf_DataLift(CNFf1, pCNF->nVars + pCNF_new->nVars + CNFf0->nVars);
+  	Abc_NtkForEachObj(pNtk, pObj, i){
+    	//printf("%d %d\n",Abc_ObjId(pObj) ,pCNF->pVarNums[pObj->Id]);
+  	}
+	Cnf_DataWriteIntoSolverInt(pSAT,pCNF,1,0);
+	Cnf_DataWriteIntoSolverInt(pSAT,pCNF_new,1,0);
+	Cnf_DataWriteIntoSolverInt(pSAT,CNFf0,1,0);
+	Cnf_DataWriteIntoSolverInt(pSAT,CNFf1,1,0);
+	Cnf_DataWriteIntoSolverInt(pSAT_sdc,CNFf0,1,0);
+	Cnf_DataWriteIntoSolverInt(pSAT_sdc,CNFf1,1,0);
+	Abc_NtkForEachObj(pNtk, pObj, i){
+		if(Abc_ObjIsPi(pObj) && i>0){
+			sat_solver_add_xor(pSAT_sdc,CNFf0->pVarNums[pObj->Id],CNFf1->pVarNums[pObj->Id],0,0);
+			sat_solver_add_xor(pSAT,CNFf0->pVarNums[pObj->Id],CNFf1->pVarNums[pObj->Id],0,0);
+			sat_solver_add_xor(pSAT,CNFf0->pVarNums[pObj->Id],pCNF->pVarNums[pObj->Id],0,0);
+			sat_solver_add_xor(pSAT,CNFf0->pVarNums[pObj->Id],pCNF_new->pVarNums[pObj->Id],0,0);
+		}
+	}
+	
+	vector<int> sat_ = {};
+	vector<int> odc_ = {};
+	bool has_odc = false;
+	for(int i=0;i<4;i++){
+		lit assumption[] = {4+pCNF->nVars + pCNF_new->nVars + i%2, 4+pCNF->nVars + pCNF_new->nVars + CNFf0->nVars+ i/2};
+		lit* begin = assumption;
+		lit* end = assumption+2;
+		int satisfiability = sat_solver_solve(pSAT_sdc, begin, end, 1000, 1000, 1000, 1000);
+		sat_.push_back(satisfiability);
+	}
+	for(int i=0;i<4;i++){
+		lit assumption[] = {4};
+		lit* begin = assumption;
+		lit* end = assumption+1;
+		int satisfiability = sat_solver_solve(pSAT, begin, end, 1000, 1000, 1000, 1000);
+		odc_.push_back(satisfiability);
+		if(sat_[i]>0 and odc_[i]<0){
+			printf("%d%d ",i/2,i%2);
+			has_odc = true;
+		}
+	}
+	if(!has_odc){
+		printf("no odc\n");
+	}
+	else{
+		printf("\n");
+	}
+	return 0;
 }
