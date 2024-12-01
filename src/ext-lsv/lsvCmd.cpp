@@ -271,22 +271,22 @@ int checksat(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj, int value0, int value1) {
   Aig_Obj_t * pObj1;
   int i;
   Aig_ManForEachObj(pFanin0cone, pObj1, i){
-    printf("%d = %d\n", Aig_ObjId(pObj1), pCnf0->pVarNums[Aig_ObjId(pObj1)]);
+    //printf("%d = %d\n", Aig_ObjId(pObj1), pCnf0->pVarNums[Aig_ObjId(pObj1)]);
   }
   Aig_ManForEachObj(pFanin1cone, pObj1, i){
-    printf("%d = %d\n", Aig_ObjId(pObj1), pCnf1->pVarNums[Aig_ObjId(pObj1)]);
+    //printf("%d = %d\n", Aig_ObjId(pObj1), pCnf1->pVarNums[Aig_ObjId(pObj1)]);
   }
   for (int i = 0; i < pCnf0->nClauses; i++){
     for (int j = 0; j < 6; j++){
-      printf("%d ", pCnf0->pClauses[i][j]);
+      //printf("%d ", pCnf0->pClauses[i][j]);
     }
-    printf("\n");
+    //printf("\n");
   }
   for (int i = 0; i < pCnf1->nClauses; i++){
     for (int j = 0; j < 6; j++){
-      printf("%d ", pCnf1->pClauses[i][j]);
+      //printf("%d ", pCnf1->pClauses[i][j]);
     }
-    printf("\n");
+    //printf("\n");
   }
 
   int pLits0[1];
@@ -296,33 +296,33 @@ int checksat(Abc_Ntk_t* pNtk, Abc_Obj_t* pObj, int value0, int value1) {
     pLits0[0] = toLitCond(pCnf0->pVarNums[Aig_ObjId(Aig_ManCo(pFanin0cone, 0))], value0);
   }
   sat_solver_addclause(pSat, pLits0, pLits0 + 1);
-  printf("%d\n", pLits0[0]);
+  //printf("%d\n", pLits0[0]);
   if ((int)Abc_ObjFaninC1(pObj) == 0) {
     pLits0[0] = toLitCond(pCnf1->pVarNums[Aig_ObjId(Aig_ManCo(pFanin1cone, 0))], value1 ^ 1);
   }else{
     pLits0[0] = toLitCond(pCnf1->pVarNums[Aig_ObjId(Aig_ManCo(pFanin1cone, 0))], value1);
   }
   sat_solver_addclause(pSat, pLits0, pLits0 + 1);
-  printf("%d\n", pLits0[0]);
+  //printf("%d\n", pLits0[0]);
   //int i;
   int pLits1[2];
   Abc_Obj_t * pObj0;
   Abc_NtkForEachCi(pNtk, pObj0, i) {
-    printf("%d = %d\n", Abc_ObjId(pObj0), pCnf0->pVarNums[Abc_ObjId(pObj0)]);
+    //printf("%d = %d\n", Abc_ObjId(pObj0), pCnf0->pVarNums[Abc_ObjId(pObj0)]);
     pLits1[0] = toLitCond(pCnf0->pVarNums[Abc_ObjId(pObj0)], 0);
     pLits1[1] = toLitCond(pCnf1->pVarNums[Abc_ObjId(pObj0)], 1);
-    printf("%d %d\n", pLits1[0], pLits1[1]);
+    //printf("%d %d\n", pLits1[0], pLits1[1]);
     sat_solver_addclause(pSat, pLits1, pLits1 + 2);
     pLits1[0] = toLitCond(pCnf1->pVarNums[Abc_ObjId(pObj0)], 0);
     pLits1[1] = toLitCond(pCnf0->pVarNums[Abc_ObjId(pObj0)], 1);
-    printf("%d %d\n", pLits1[0], pLits1[1]);
+    //printf("%d %d\n", pLits1[0], pLits1[1]);
     sat_solver_addclause(pSat, pLits1, pLits1 + 2);
   }
 
   
   
   int status = sat_solver_solve(pSat, NULL, NULL, 1000, 1000, 1000, 1000);
-  printf("%d\n", status);
+  //printf("%d\n", status);
   sat_solver_delete(pSat);
   return status;
 }
@@ -387,28 +387,28 @@ int Lsv_CommandPrintSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   }
   bool sdc00 = false , sdc01 = false, sdc10 = false, sdc11 = false;
   if (num00 == 0){
-    printf("00 ");
+    //printf("00 ");
     if (checksat(pNtk, pObj, 0, 0) == -1){
       sdc00 = true;
       printf("00 ");
     }
   }
   if (num01 == 0){
-    printf("01 ");
+    //printf("01 ");
     if (checksat(pNtk, pObj, 0, 1) == -1){
       sdc01 = true;
       printf("01 ");
     }
   }
   if (num10 == 0){
-    printf("10 ");
+    //printf("10 ");
     if (checksat(pNtk, pObj, 1, 0) == -1){
       sdc10 = true;
       printf("10 ");
     }
   }
   if (num11 == 0){
-    printf("11 ");
+    //printf("11 ");
     if (checksat(pNtk, pObj, 1, 1) == -1){
       sdc11 = true;
       printf("11 ");
