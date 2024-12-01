@@ -312,6 +312,25 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
   return 0;
 }
 
+int Flip_Fanout(Abc_Obj_t* pObj){
+  
+  Abc_Obj_t* pFanout;
+  int i;
+  Abc_ObjForEachFanout(pObj, pFanout, i){
+    if (Abc_ObjFanin0(pFanout) == pObj){
+      Abc_ObjXorFaninC(pFanout, 0);
+    }
+    else if (Abc_ObjFanin1(pFanout) == pObj){
+      Abc_ObjXorFaninC(pFanout, 1);
+    }
+    else{
+      return 1;
+    }
+  }
+  
+  return 0;
+}
+
 int* Lsv_odc(Abc_Ntk_t* pNegNtk, Abc_Obj_t* pObj){
 
   Vec_Ptr_t* v_roots = Vec_PtrAlloc(5);
@@ -323,44 +342,35 @@ int* Lsv_odc(Abc_Ntk_t* pNegNtk, Abc_Obj_t* pObj){
   Abc_Ntk_t* transFanin = Abc_NtkCreateConeArray(pNegNtk, v_roots, 1);
 
   Abc_Ntk_t* pPosNtk = Abc_NtkDup(pNegNtk);
-  Abc_Obj_t* pNextObj = Abc_ObjFanout0(pObj);
-  // printf("fanout0: %s\n", Abc_ObjName(pNextObj));
-  // printf("fanout0: %s\n", Abc_ObjName(Abc_ObjFanin0(pNextObj)));
-  // printf("fcompl0 = %d\n", Abc_ObjFaninC0(pNextObj));
-  // printf("fanout1: %s\n", Abc_ObjName(Abc_ObjFanin1(pNextObj)));
+  // Abc_Obj_t* pNextObj = Abc_ObjFanout0(pObj);
 
   // Abc_NtkPrintStats(pPosNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
   // Abc_NtkPrintIo(stdout, pPosNtk, 0);
   // Abc_NtkPrintStats(pNegNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
   // Abc_NtkPrintIo(stdout, pNegNtk, 0);
   
-  if(pNextObj == NULL){
+  if(Flip_Fanout(pObj)){
+    printf("Flip fanout failed\n");
     return NULL;
   }
-  else if (Abc_ObjFanin0(pNextObj) == pObj){
-    Abc_ObjXorFaninC(pNextObj, 0);
-  }
-  else if (Abc_ObjFanin1(pNextObj) == pObj){
-    Abc_ObjXorFaninC(pNextObj, 1);
-  }
-  else{
-    return NULL;
-  }
+  
 
   Abc_Ntk_t* pMiterNtk = Abc_NtkMiter(pPosNtk, pNegNtk, 1, 0, 0, 0);
   if(pMiterNtk == NULL){
     printf("Miter failed\n");
+    Flip_Fanout(pObj);
     return NULL;
   }
-  Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
-  Abc_NtkPrintIo(stdout, pMiterNtk, 0);
+  // Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  // Abc_NtkPrintIo(stdout, pMiterNtk, 0);
 
   if(!Abc_NtkAppend(pMiterNtk, transFanin, 1)){
     printf("Append failed\n");
+    Flip_Fanout(pObj);
     return NULL;
   }
-  Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
-  Abc_NtkPrintIo(stdout, pMiterNtk, 0);
+  // Abc_NtkPrintStats(pMiterNtk, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0);
+  // Abc_NtkPrintIo(stdout, pMiterNtk, 0);
 
   int* odc_set = new int[4];
   int odc_num = 4;
@@ -369,57 +379,80 @@ int* Lsv_odc(Abc_Ntk_t* pNegNtk, Abc_Obj_t* pObj){
   }
 
   Aig_Man_t* pMan = Abc_NtkToDar(pMiterNtk, 0, 1);
+  // printf("pMan Co num = %d\n", Aig_ManCoNum(pMan));
   Cnf_Dat_t* pCnf = Cnf_Derive(pMan, Aig_ManCoNum(pMan));
-  Cnf_DataPrint(pCnf, 1);
+  // Cnf_DataPrint(pCnf, 1);
 
   sat_solver* pSat = sat_solver_new();
   pSat = (sat_solver*)Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 1);
   
-  Abc_Obj_t* pPO;
-  pPO = Abc_NtkPo(pMiterNtk, 0);
-  if(pCnf->pVarNums[pPO->Id] == -1){
+  Aig_Obj_t* pAigPO = Aig_ManCo(pMan, 0);
+  lit Lits[2];
+  int Cid;
+  if(pCnf->pVarNums[pAigPO->Id] == -1){
     printf("No miter output\n");
+    Flip_Fanout(pObj);
     return NULL;
   }
-  printf("Obj Id = %d, name = %s, index in cnf = %d\n", Abc_ObjId(pPO), Abc_ObjName(pPO), pCnf->pVarNums[pPO->Id]);
-  sat_solver_add_const(pSat, pCnf->pVarNums[pPO->Id], 0);
+  Lits[0] = Abc_Var2Lit( pCnf->pVarNums[pAigPO->Id], 0);
+  // printf("AigPo Id = %d, index in cnf = %d \n", Aig_ObjId(pAigPO), pCnf->pVarNums[pAigPO->Id]);
+  // sat_solver_add_const(pSat, pCnf->pVarNums[pAigPO->Id], 0);
+  Cid = sat_solver_addclause( pSat, Lits, Lits + 1 );
+  if(Cid == 0){
+    printf("Miter Cid == 0\n");
+    Flip_Fanout(pObj);
+    return NULL;
+  }
 
-  // pPO = Abc_NtkPo(pMiterNtk, 2);
-  // sat_solver_add_const(pSat, pCnf->pVarNums[pPO->Id], 0);
-  
   while(odc_num > 0){
     int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
     if(status == -1){
-      printf("status = -1\n");
+      // printf("status = -1\n");
       break;
     }
 
+    // add clause to exclude the current solution
+    // clause = (PO1 ^ f1) | (PO2 ^ f2) | ... | (POn ^ fn)
     int j;
-    lit Lits[2];
     int y[2];
-    Abc_NtkForEachPo(pMiterNtk, pPO, j){
-      int PO_cnf_id = pCnf->pVarNums[pPO->Id];
-      printf("Obj Id = %d, name = %s, index in cnf = %d, j = %d\n", Abc_ObjId(pPO), Abc_ObjName(pPO), PO_cnf_id, j);
-      printf("PO %s: %d\n", Abc_ObjName(pPO), sat_solver_var_value(pSat, PO_cnf_id));
+    Aig_ManForEachCo(pMan, pAigPO, j){
+      int PO_cnf_id = pCnf->pVarNums[pAigPO->Id];
+      // printf("Obj Id = %d, index in cnf = %d, j = %d\n", Aig_ObjId(pAigPO), PO_cnf_id, j);
+      // printf("PO value: %d\n", sat_solver_var_value(pSat, PO_cnf_id));
       if(j==0) continue;
 
       y[j-1] = sat_solver_var_value(pSat, PO_cnf_id) ^ (j==1 ? Abc_ObjFaninC0(pObj) : Abc_ObjFaninC1(pObj));
-      Lits[j-1] = Abc_Var2Lit( PO_cnf_id, sat_solver_var_value(pSat, PO_cnf_id) );
-      printf("y[%d] = %d\n", j-1, y[j-1]);
-      printf("Lits[%d] = %d\n", j-1, Lits[j-1]);
+      Lits[j-1] = Abc_Var2Lit( PO_cnf_id, sat_solver_var_value(pSat, PO_cnf_id) ); // value = 1, than add ~PO_cnf_id
+      // printf("y[%d] = %d\n", j-1, y[j-1]);
+      // printf("Lits[%d] = %d\n", j-1, Lits[j-1]);
     }
 
     odc_set[y[0]*2 + y[1]] = 0;
     odc_num--;
 
-    int Cid = sat_solver_addclause( pSat, Lits, Lits + 2 );
+    Cid = sat_solver_addclause( pSat, Lits, Lits + 2 );
+    // conflict when adding the clause
     if ( Cid == 0 ){
-      printf("Cid == 0\n");
-      break; // conflict when adding the clause
+      // printf("Cid == 0\n");
+      break; 
     }
 
   }
 
+  // Exclude SDC from all DC => ODC
+  int* sdc_sat = Lsv_sdc(pNegNtk, pObj);
+
+  if(sdc_sat == NULL){
+    Flip_Fanout(pObj);
+    return odc_set;
+  }
+
+  for(int i = 0; i < 4; i++){
+    if(sdc_sat[i] == -1){
+      odc_set[i] = 0;
+    }
+  }
+  Flip_Fanout(pObj);
   return odc_set;
 }
 
@@ -462,7 +495,14 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 0;
   }
   else{
-    print_dc(odc_set);
+    int odc_num = 0;
+    for(int i = 0; i < 4; i++){
+      if(odc_set[i] == -1){
+        odc_num++;
+      }
+    }
+    if(odc_num == 0) printf("no odc\n");
+    else print_dc(odc_set);
   }
   return 0;
 }
@@ -509,7 +549,7 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   Abc_Obj_t* pFanin;
   int i;
   Abc_ObjForEachFanin(pObj, pFanin, i) {
-    int faninID = (int)Abc_ObjId(pFanin);
+    // int faninID = (int)Abc_ObjId(pFanin);
     int fanin_index = Lsv_find_cut(pFanin, k_feasible, k_cut, kcut_size, id_to_index, num_cut_per_obj);
     // printf("faninID = %d, fanin_index = %d\n", faninID, fanin_index);
     // printf("num_cut_per_obj[fanin_index] = %d\n", num_cut_per_obj[fanin_index]);
