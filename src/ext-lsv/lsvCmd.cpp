@@ -301,7 +301,17 @@ std::unordered_set<int> Lsv_NodeSDC(Abc_Ntk_t* pNtk, int i){
 
 void Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int k){
   //std::cout << "Compute ODC.\n";
-  Abc_Ntk_t *pNegNtk = Abc_NtkDup(pNtk);
+    std::vector<int> dontcare;
+    dontcare.resize(4);
+    for(int x = 0;x < dontcare.size();++x){
+      dontcare[x] = 0;
+    }
+    sat_solver *pSat = sat_solver_new();
+    /*
+    for(int x = 0;x < dontcare.size();++x){
+      std::cout << dontcare[x] << "\n";
+    }*/
+    Abc_Ntk_t *pNegNtk = Abc_NtkDup(pNtk);
     Abc_Obj_t *pCompNode = Abc_NtkObj(pNegNtk, k);
     Abc_Obj_t *pFanout;
     Abc_Obj_t *pNode = Abc_NtkObj(pNtk,k);
@@ -329,32 +339,24 @@ void Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int k){
     Abc_NtkAppend(pMiterNtk, pConeNtk, 1);
     Aig_Man_t *pAig = Abc_NtkToDar(pMiterNtk, 0, 0);
 
-    sat_solver *pSat = sat_solver_new();
+    
     Cnf_Dat_t *pCnf = Cnf_Derive(pAig, Abc_NtkPoNum(pMiterNtk));
     Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
-    int var1 = pCnf->pVarNums[Aig_ManCo(pAig, 0)->Id];
-    int var2 = pCnf->pVarNums[Aig_ManCo(pAig, 1)->Id];
-    int var3 = pCnf->pVarNums[Aig_ManCo(pAig, 2)->Id];
+    int var0 = pCnf->pVarNums[Aig_ManCo(pAig, 0)->Id];
+    int var1 = pCnf->pVarNums[Aig_ManCo(pAig, 1)->Id];
+    int var2 = pCnf->pVarNums[Aig_ManCo(pAig, 2)->Id];
 
     lit assumption[1];
-    assumption[0] = Abc_Var2Lit(var1, 0);
+    assumption[0] = Abc_Var2Lit(var0, 0);
     sat_solver_addclause(pSat, assumption, assumption + 1);
     int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
 
-    std::vector<int> dontcare;
-    dontcare.resize(4);
-    for(int x = 0;x < dontcare.size();++x){
-      dontcare[x] = 0;
-    }
-  /*
-    for(int x = 0;x < dontcare.size();++x){
-      std::cout << dontcare[x] << "\n";
-    }*/
+    
 
     while (status == l_True){
-        int value1 = sat_solver_var_value(pSat, var2);
-        int value2 = sat_solver_var_value(pSat, var3);
-        int assumptions[2] = {Abc_Var2Lit(var2, value1), Abc_Var2Lit(var3, value2)};
+        int value1 = sat_solver_var_value(pSat, var1);
+        int value2 = sat_solver_var_value(pSat, var2);
+        int assumptions[2] = {Abc_Var2Lit(var1, value1), Abc_Var2Lit(var2, value2)};
         int v0 = value1, v1 = value2;
         if (Abc_ObjFaninC0(pNode))
             v0 = 1-v0;
