@@ -1,0 +1,16 @@
+.model dc
+.inputs x0 x1 
+.outputs y0
+.names x0 x1 and0
+11 1
+.names x0 x1 or0
+00 0
+.names and0 not0
+0 1 
+.names not0 or0 nand0
+11 0
+.names and0 or0 and1
+11 1
+.names nand0 and1 y0
+11 1
+.end
