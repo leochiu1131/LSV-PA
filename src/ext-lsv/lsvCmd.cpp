@@ -12,7 +12,8 @@ extern "C" {
     Aig_Man_t* Abc_NtkToDar(Abc_Ntk_t* pNtk, int fExors, int fRegisters);
 }
 
-bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) { 
+bool isPatternPossible(Abc_Obj_t* pNode, int val0, int val1) {
+    
     Abc_Ntk_t* pNtk = Abc_ObjNtk(pNode);
     Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pNode);
     Abc_Obj_t* pFanin1 = Abc_ObjFanin1(pNode);
@@ -136,6 +137,7 @@ struct OdcResult {
     bool success;
 };
 
+
 // Node mapping structure and helper functions
 typedef struct {
     Vec_Ptr_t* pOrigToAigMap;  // Maps original node IDs to AIG node IDs
@@ -191,7 +193,7 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
     OdcResult result;
     result.success = false;
     NodeMapping_t* pMapping = CreateNodeMapping(pNtk);
-
+    
     // Store original fanin information
     Abc_Obj_t* pFanin0 = Abc_ObjFanin0(pNode);
     Abc_Obj_t* pFanin1 = Abc_ObjFanin1(pNode);
@@ -325,7 +327,7 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
         int outVar = nodeToVar[driverId];
 
         lit Lits[1];
-        Lits[0] = toLitCond(outVar, 0);
+        Lits[0] = toLitCond(outVar, 1);
 
         std::vector<lit> clause = {Lits[0]};
         allClauses.push_back(clause);
@@ -384,6 +386,7 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             int var0 = nodeToVar[aigFanin0Id];
             int var1 = nodeToVar[aigFanin1Id];
             
+            
             if (var0 == 0 || var1 == 0) {
                 continue;
             }
@@ -391,6 +394,7 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             // Get current assignment
             int val0 = sat_solver_var_value(pSat, var0);
             int val1 = sat_solver_var_value(pSat, var1);
+            
             
             // Apply complemented edges adjustment only for output display
             int displayVal0 = isCompl0 ? !val0 : val0;
@@ -401,10 +405,10 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             
             if (foundPatterns.find(pattern) == foundPatterns.end()) {
                 foundPatterns.insert(pattern);
-                result.odcPatterns.push_back(pattern);
                 
                 // Create blocking clause using original SAT values
                 Vec_Int_t* vLits = Vec_IntAlloc(2);
+                
                 
                 Vec_IntPush(vLits, Abc_Var2Lit(var0, val0));
                 Vec_IntPush(vLits, Abc_Var2Lit(var1, val1));
@@ -418,6 +422,43 @@ OdcResult calculateOdc(Abc_Ntk_t* pNtk, Abc_Obj_t* pNode) {
             } else {
                 break;
             }
+        }
+    }
+
+    // Now find complement patterns
+    std::vector<std::pair<int, int>> allPatterns = {{0,0}, {0,1}, {1,0}, {1,1}};
+    std::vector<std::pair<int, int>> complementPatterns;
+
+    // Get complement patterns by checking which patterns weren't found
+    for (const auto& pattern : allPatterns) {
+        if (foundPatterns.find(pattern) == foundPatterns.end()) {
+            complementPatterns.push_back(pattern);
+        }
+    }
+
+    // Find SDC patterns
+    std::vector<std::pair<int, int>> sdcPatterns;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            if (!isPatternPossible(pNode, i, j)) {
+                sdcPatterns.push_back({i, j});
+            }
+        }
+    }
+
+    // Remove SDC patterns from complement patterns to get final ODC patterns
+    for (const auto& pattern : complementPatterns) {
+        // Check if pattern is not an SDC
+        bool isSDC = false;
+        for (const auto& sdc : sdcPatterns) {
+            if (pattern == sdc) {
+                isSDC = true;
+                break;
+            }
+        }
+        
+        if (!isSDC) {
+            result.odcPatterns.push_back(pattern);
         }
     }
 
