@@ -1,5 +1,5 @@
-read ./lsv/pa1/comp1.blif
+read ./comp.blif
 strash
-lsv_sdc 8
+lsv_sdc 42
 q
 
