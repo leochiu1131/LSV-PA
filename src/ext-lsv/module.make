@@ -1,2 +1,2 @@
 SRC += \
-    src/ext-lsv/lsvCut.cpp
+    src/ext-lsv/lsvSDC.cpp
