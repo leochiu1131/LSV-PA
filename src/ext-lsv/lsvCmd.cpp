@@ -262,12 +262,9 @@ std::vector<std::vector<int>> simulation_filter(Abc_Ntk_t *Ntk, int node_idx, in
 
   std::vector<std::vector<int>> rets;
   for(int i : remain_fanin_combinations){
-    int v0_in = i / 2;
-    int v1_in = i % 2;
-    int v0 = (fanin0_inv) ? 1 - v0_in : v0_in;    
-    int v1 = (fanin1_inv) ? 1 - v1_in : v1_in;
-    int y = v0 & v1;
-    rets.push_back({v0_in, v1_in, y});
+    int v0_in = i >> 1;
+    int v1_in = i & 1;
+    rets.push_back({v0_in, v1_in});
   }
   return rets;
 }
@@ -277,37 +274,15 @@ bool SAT_check_fanin_combination(Abc_Ntk_t* Ntk, int node_id, const std::vector<
   sat_solver* pSat = sat_solver_new();
   int i;
   Abc_Obj_t* pObj;
-  std::unordered_map<int, int> aig_var_map;
   Abc_NtkForEachNode(Ntk, pObj, i){
     int id = Abc_ObjId(pObj);
     if(node_id == id){
       break;
     }
     int iVar, iVar0, iVar1;
-    if(aig_var_map.find(id) == aig_var_map.end()){
-      int idx = aig_var_map.size();
-      iVar = aig_var_map[id] = idx;      
-    }else{
-      iVar = aig_var_map[id];
-    }
-
-    int fanin0_id = Abc_ObjId(Abc_ObjFanin0(pObj));
-    if(aig_var_map.find(fanin0_id) == aig_var_map.end()){
-      int idx = aig_var_map.size();
-      aig_var_map[fanin0_id] = idx;
-      iVar0 = idx;
-    }else{
-      iVar0 = aig_var_map[fanin0_id];
-    }
-  
-    int fanin1_id = Abc_ObjId(Abc_ObjFanin1(pObj));
-    if(aig_var_map.find(fanin1_id) == aig_var_map.end()){
-      int idx = aig_var_map.size();
-      aig_var_map[fanin1_id] = idx;
-      iVar1 = idx;
-    }else{
-      iVar1 = aig_var_map[fanin1_id];
-    }
+    iVar = Abc_ObjId(pObj);
+    iVar0 = Abc_ObjId(Abc_ObjFanin0(pObj));
+    iVar1 = Abc_ObjId(Abc_ObjFanin1(pObj));
 
     bool fCompl0 = Abc_ObjFaninC0(pObj);
     bool fCompl1 = Abc_ObjFaninC1(pObj);
@@ -315,50 +290,22 @@ bool SAT_check_fanin_combination(Abc_Ntk_t* Ntk, int node_id, const std::vector<
     // create clause1
     lit Lits_1[2];
     // ~A or B
-    Lits_1[0] = toLitCond(iVar, 0);
-    ////std::cout<<-iVar<<" ";
-    if(fCompl0){
-      Lits_1[1] = toLitCond(iVar0, 0);
-      ////std::cout<<-iVar0<<" 0"<<std::endl;
-    }else{
-      Lits_1[1] = toLitCond(iVar0, 1);
-      ////std::cout<<iVar0<<" 0"<<std::endl;
-    }
+    Lits_1[0] = toLitCond(iVar, 1);    
+    Lits_1[1] = toLitCond(iVar0, fCompl0); 
     int Cid = sat_solver_addclause(pSat, Lits_1, Lits_1 + 2);
 
     // create clause2
-    lit Lits_2[2];
-    // ~A or C
-    Lits_2[0] = toLitCond(iVar, 0);
-    ////std::cout<<-iVar<<" ";
-    if(fCompl1){
-      Lits_2[1] = toLitCond(iVar1, 0);
-      ////std::cout<<-iVar1<<" 0"<<std::endl;
-    }else{
-      Lits_2[1] = toLitCond(iVar1, 1);
-      ////std::cout<<iVar1<<" 0"<<std::endl;
-    }
+    lit Lits_2[2];    
+    Lits_2[0] = toLitCond(iVar, 1);        
+    Lits_2[1] = toLitCond(iVar1, fCompl1);    
     Cid = sat_solver_addclause(pSat, Lits_2, Lits_2 + 2);
 
     // create clause3
     // A or ~B or ~C
     lit Lits_3[3];
-    Lits_3[0] = toLitCond(iVar, 1);
-    ////std::cout<<iVar<<" ";
-    if(fCompl0){
-      Lits_3[1] = toLitCond(iVar0, 1);
-      ////std::cout<<iVar0<<" ";
-    }else{
-      Lits_3[1] = toLitCond(iVar0, 0);
-      ////std::cout<<-iVar0<<" ";
-    }
-    if(fCompl1){
-      Lits_3[2] = toLitCond(iVar1, 1);
-      ////std::cout<<iVar1<<" 0"<<std::endl;
-    }else{
-      Lits_3[2] = toLitCond(iVar1, 0);
-      ////std::cout<<-iVar1<<" 0"<<std::endl;
-    }
+    Lits_3[0] = toLitCond(iVar, 0);    
+    Lits_3[1] = toLitCond(iVar0, !fCompl0);            
+    Lits_3[2] = toLitCond(iVar1, !fCompl1);
     Cid = sat_solver_addclause(pSat, Lits_3, Lits_3 + 3);
   }
   
@@ -366,8 +313,8 @@ bool SAT_check_fanin_combination(Abc_Ntk_t* Ntk, int node_id, const std::vector<
   Abc_Obj_t* fanin0 = Abc_ObjFanin0(node);
   Abc_Obj_t* fanin1 = Abc_ObjFanin1(node);
   
-  int iVar0 = aig_var_map[Abc_ObjId(fanin0)];
-  int iVar1 = aig_var_map[Abc_ObjId(fanin1)];  
+  int iVar0 = Abc_ObjId(fanin0);
+  int iVar1 = Abc_ObjId(fanin1);
 
   int v0 = fanin_combination[0];
   int v1 = fanin_combination[1];  
@@ -375,29 +322,18 @@ bool SAT_check_fanin_combination(Abc_Ntk_t* Ntk, int node_id, const std::vector<
   //add clasue constraints
   
   lit v0_Lits[1];
-  v0_Lits[0] = toLitCond(iVar0, v0);
-  if(v0 == 0){
-    ////std::cout<<-iVar0<<" 0\n";
-  }else{
-    ////std::cout<<iVar0<<" 0\n";
-  }
+  v0_Lits[0] = toLitCond(iVar0, 1-v0);
   Cid = sat_solver_addclause(pSat, v0_Lits, v0_Lits + 1);
 
   lit v1_Lits[1];
-  v1_Lits[0] = toLitCond(iVar1, v1);
-  if(v1 == 0){
-    ////std::cout<<-iVar1<<" 0\n";
-  }else{
-    ////std::cout<<iVar1<<" 0\n";
-  }
+  v1_Lits[0] = toLitCond(iVar1, 1-v1);
   Cid = sat_solver_addclause(pSat, v1_Lits, v1_Lits + 1);
              
   // solve sat
   int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
-  bool unsat = (status == l_False);
 
   sat_solver_delete(pSat);
-  return unsat;
+  return status == l_False;
 }
 
 
@@ -411,16 +347,14 @@ std::set<int> Lsv_NtkComputeSDC(Abc_Ntk_t* pNtk, int node_id){
   Abc_Obj_t* node = Abc_ObjFanin0(node_fanout);
   int new_node_id = Abc_ObjId(node);
   remain_fanin_combinations = simulation_filter(ConeNtk, new_node_id, PATTERN_NUM);
-  
-  bool flag = true;
-  for(const auto &fanin_combination : remain_fanin_combinations){
+    
+  for(const auto &fanin_combination : remain_fanin_combinations){    
     bool is_fanin_combination_sdc = SAT_check_fanin_combination(ConeNtk, new_node_id, fanin_combination);
-    if(is_fanin_combination_sdc){
-      flag = false;
+    if(is_fanin_combination_sdc){      
       bool fCompl0 = Abc_ObjFaninC0(node);
       bool fCompl1 = Abc_ObjFaninC1(node);
-      int y0 = (fCompl0)? 1-fanin_combination[0] : fanin_combination[0];
-      int y1 = (fCompl1)? 1-fanin_combination[1] : fanin_combination[1];
+      int y0 = fanin_combination[0] ^ fCompl0;
+      int y1 = fanin_combination[1] ^ fCompl1;
       sdc_set.insert(2*y0+y1);
     }
   }
@@ -433,7 +367,7 @@ int Lsv_CommandComputeSDC(Abc_Frame_t* pAbc, int argc, char** argv){
   int node_id = std::atoi(c);
 
   if(!pNtk){
-    Abc_Print(-1, "Empty network.\n");
+    std::cout<<"no sdc\n";
     return 0; 
   }
 
@@ -441,7 +375,7 @@ int Lsv_CommandComputeSDC(Abc_Frame_t* pAbc, int argc, char** argv){
   pObj = Abc_NtkObj(pNtk, node_id);
   bool isNode = Abc_ObjIsNode(pObj);
   if(!isNode){
-    Abc_Print(-1, "Not a node.\n");
+    std::cout<<"no sdc\n";
     return 0; 
   }
   
@@ -451,8 +385,8 @@ int Lsv_CommandComputeSDC(Abc_Frame_t* pAbc, int argc, char** argv){
     std::cout<<"no sdc\n";
   }else{
     for(auto num : sdc_set){
-      char c0 = (num & 2) ? '1' : '0';
-      char c1 = (num & 1) ? '1' : '0';
+      int c0 = num >> 1;
+      int c1 = num & 1; 
       std::cout<<c0<<c1<<" ";
     }
     std::cout<<std::endl;
@@ -464,39 +398,34 @@ int Lsv_CommandComputeSDC(Abc_Frame_t* pAbc, int argc, char** argv){
 //Compute ODC
 
 std::set<int> Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int node_id){
-  std::set<int> odc_set;
+  std::set<int> care_set;
   // step1 duplicate the network
-  Abc_Ntk_t* pNtk_neg_node = Abc_NtkDup(pNtk);
+  Abc_Ntk_t* pNtk_with_neg_node = Abc_NtkDup(pNtk);
   Abc_Obj_t* pObj;
   // step2 
   // find all node_id's fanouts
   // add inv node between node_id and its fanouts  
-  Abc_Obj_t* neg_node = Abc_NtkObj(pNtk_neg_node, node_id);
+  Abc_Obj_t* neg_node = Abc_NtkObj(pNtk_with_neg_node, node_id);
   Abc_Obj_t* neg_node_fanout;
   int i;
   int Cid;
-  Abc_ObjForEachFanout(neg_node, neg_node_fanout, i){
-    int fanout_id = Abc_ObjId(neg_node_fanout);
-    //std::cout<<"fanout_id: "<<fanout_id<<std::endl;
-    if(Abc_ObjFanin0(neg_node_fanout) == neg_node){
-      //std::cout<<"fanin0"<<std::endl;
-      neg_node_fanout->fCompl0 = ~neg_node_fanout->fCompl0;
-    }else{
-      //std::cout<<"fanin1"<<std::endl;
-      neg_node_fanout->fCompl1 = ~neg_node_fanout->fCompl1;
+  Abc_ObjForEachFanout(neg_node, neg_node_fanout, i){        
+    if(Abc_ObjFanin0(neg_node_fanout) == neg_node){      
+      neg_node_fanout->fCompl0 = !neg_node_fanout->fCompl0;
+    }else{      
+      neg_node_fanout->fCompl1 = !neg_node_fanout->fCompl1;
     }
   }
 
   // step3 miter
-  Abc_Ntk_t* miter = Abc_NtkMiter(pNtk, pNtk_neg_node, 1, 0, 0, 0);  
+  Abc_Ntk_t* miter = Abc_NtkMiter(pNtk, pNtk_with_neg_node, 1, 0, 0, 0);  
   
   
 
   // step4 init SAT 
   sat_solver* pSat = sat_solver_new();
   // step5 convert miter to CNF
-  // for each node in miter, add clause
-  //std::cout<<"add node clause\n";
+  // for each node in miter, add clause  
   int j;
   Abc_NtkForEachNode(miter,pObj,j){
     int iVar = Abc_ObjId(pObj);
@@ -507,121 +436,51 @@ std::set<int> Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int node_id){
     // create clause1
     lit Lits_1[2];
     // ~A or B
-    Lits_1[0] = toLitCond(iVar, 0);
-    if(fCompl0){
-      Lits_1[1] = toLitCond(iVar0, 0);
-    }else{
-      Lits_1[1] = toLitCond(iVar0, 1);
-    }
+    Lits_1[0] = toLitCond(iVar, 1);    
+    Lits_1[1] = toLitCond(iVar0, fCompl0);            
     Cid = sat_solver_addclause(pSat, Lits_1, Lits_1 + 2);
 
     // create clause2
     lit Lits_2[2];
     // ~A or C
-    Lits_2[0] = toLitCond(iVar, 0);
-    if(fCompl1){
-      Lits_2[1] = toLitCond(iVar1, 0);
-    }else{
-      Lits_2[1] = toLitCond(iVar1, 1);
-    }
+    Lits_2[0] = toLitCond(iVar, 1);    
+    Lits_2[1] = toLitCond(iVar1, fCompl1);            
     Cid = sat_solver_addclause(pSat, Lits_2, Lits_2 + 2);
 
     // create clause3
     // A or ~B or ~C
     lit Lits_3[3];
-    Lits_3[0] = toLitCond(iVar, 1);
-    if(fCompl0){
-      Lits_3[1] = toLitCond(iVar0, 1);
-    }else{
-      Lits_3[1] = toLitCond(iVar0, 0);
-    }
-    if(fCompl1){
-      Lits_3[2] = toLitCond(iVar1, 1);
-    }else{
-      Lits_3[2] = toLitCond(iVar1, 0);
-    }
+    Lits_3[0] = toLitCond(iVar, 0);
+    Lits_3[1] = toLitCond(iVar0, !fCompl0);
+    Lits_3[2] = toLitCond(iVar1, !fCompl1);
     Cid = sat_solver_addclause(pSat, Lits_3, Lits_3 + 3);
   }
-  
-  //std::cout<<"add output clause\n";
-  // add output
+    
+  // add output constraint clauses
   Abc_NtkForEachPo(miter,pObj,j){
-    int iVar = Abc_ObjId(pObj);
-    int fanin_num = Abc_ObjFaninNum(pObj);
-    if(fanin_num == 1){
-      int iVar0 = Abc_ObjId(Abc_ObjFanin0(pObj));
-      bool fCompl0 = Abc_ObjFaninC0(pObj);
-      // A = B 
-      // clause1 ~A or B
-      lit Lits_1[2];
-      Lits_1[0] = toLitCond(iVar, 0);
-      if(fCompl0){        
-        Lits_1[1] = toLitCond(iVar0, 0);
-      }else{        
-        Lits_1[1] = toLitCond(iVar0, 1);
-      }
-      Cid = sat_solver_addclause(pSat, Lits_1, Lits_1 + 2);
-      // clause2 A or ~B
-      lit Lits_2[2];
-      Lits_2[0] = toLitCond(iVar, 1);
-      if(fCompl0){
-        Lits_2[1] = toLitCond(iVar0, 1);
-      }else{
-        Lits_2[1] = toLitCond(iVar0, 0);
-      }
-      Cid = sat_solver_addclause(pSat, Lits_2, Lits_2 + 2);
+    int iVar = Abc_ObjId(pObj);    
+    int iVar0 = Abc_ObjId(Abc_ObjFanin0(pObj));
+    bool fCompl0 = Abc_ObjFaninC0(pObj);
+    // A = B 
+    // clause1 ~A or B
+    lit Lits_1[2];
+    Lits_1[0] = toLitCond(iVar, 1);    
+    Lits_1[1] = toLitCond(iVar0, fCompl0);
 
-    }else{
-      // noraml and gate
-      int iVar0 = Abc_ObjId(Abc_ObjFanin0(pObj));
-      int iVar1 = Abc_ObjId(Abc_ObjFanin1(pObj));
-      bool fCompl0 = Abc_ObjFaninC0(pObj);
-      bool fCompl1 = Abc_ObjFaninC1(pObj);
-      // clause1 ~A or B
-      lit Lits_1[2];
-      if(fCompl0){
-        Lits_1[0] = toLitCond(iVar, 0);
-        Lits_1[1] = toLitCond(iVar0, 0);
-      }else{
-        Lits_1[0] = toLitCond(iVar, 0);
-        Lits_1[1] = toLitCond(iVar0, 1);
-      }
-      Cid = sat_solver_addclause(pSat, Lits_1, Lits_1 + 2);
-      // clause2 ~A or C
-      lit Lits_2[2];
-      if(fCompl1){
-        Lits_2[0] = toLitCond(iVar, 0);
-        Lits_2[1] = toLitCond(iVar1, 0);
-      }else{
-        Lits_2[0] = toLitCond(iVar, 0);
-        Lits_2[1] = toLitCond(iVar1, 1);
-      }
-      Cid = sat_solver_addclause(pSat, Lits_2, Lits_2 + 2);
-      // clause3 A or ~B or ~C
-      lit Lits_3[3];
-      Lits_3[0] = toLitCond(iVar, 1);
-      if(fCompl0){
-        Lits_3[1] = toLitCond(iVar0, 1);
-      }else{
-        Lits_3[1] = toLitCond(iVar0, 0);
-      }
-      if(fCompl1){
-        Lits_3[2] = toLitCond(iVar1, 1);
-      }else{
-        Lits_3[2] = toLitCond(iVar1, 0);
-      }
-      Cid = sat_solver_addclause(pSat, Lits_3, Lits_3 + 3);
-    }
+    Cid = sat_solver_addclause(pSat, Lits_1, Lits_1 + 2);
+    // clause2 A or ~B
+    lit Lits_2[2];
+    Lits_2[0] = toLitCond(iVar, 0);
+    Lits_2[1] = toLitCond(iVar0, !fCompl0);
+    Cid = sat_solver_addclause(pSat, Lits_2, Lits_2 + 2);
   }
-
-  //std::cout<<"add miter output == 1 clause\n";
-  // step6 add constraints output = 1
+  
+  // step6 add constraints output == 1
   Abc_NtkForEachPo(miter,pObj,j){
     int iVar = Abc_ObjId(pObj);
     lit Lits[1];
-    Lits[0] = toLitCond(iVar, 1);
-    Cid = sat_solver_addclause(pSat, Lits, Lits + 1);
-    //std::cout << "Cid: " << Cid << std::endl;
+    Lits[0] = toLitCond(iVar, 0);
+    Cid = sat_solver_addclause(pSat, Lits, Lits + 1);    
   }
   
   //std::cout<<"what's node_id in miter?: "<<std::endl;
@@ -630,76 +489,36 @@ std::set<int> Lsv_NtkComputeODC(Abc_Ntk_t* pNtk, int node_id){
 
   // what's node_id in miter?
   // step7 solve sat
-  Abc_NtkForEachNode(miter,pObj,j){
-    int id = Abc_ObjId(pObj);
-    int fanin0_id = Abc_ObjId(Abc_ObjFanin0(pObj));
-    int fanin1_id = Abc_ObjId(Abc_ObjFanin1(pObj));
-    bool fCompl0 = Abc_ObjFaninC0(pObj);
-    bool fCompl1 = Abc_ObjFaninC1(pObj);
-    //std::cout << id << " " << fanin0_id << " " << fanin1_id << " " << fCompl0 << " " << fCompl1 << std::endl;
-  }
-  //std::cout << std::endl;
 
   Abc_Obj_t* node = Abc_NtkObj(miter, node_id); 
   if(node == NULL){
-    //std::cout << "node is NULL" << std::endl;
-    return odc_set;
+    care_set.insert({0,1,2,3});
+    return care_set;
   }
   Abc_Obj_t* node_fanin0 = Abc_ObjFanin0(node);
   Abc_Obj_t* node_fanin1 = Abc_ObjFanin1(node);
-  if(node_fanin0 == NULL || node_fanin1 == NULL){
-    //std::cout << "one fanin miss" << std::endl;
-    return odc_set;
-  }
-  //std::cout<<"Solver: "<<std::endl;
-
+  bool fanin0_inv = Abc_ObjFaninC0(node);
+  bool fanin1_inv = Abc_ObjFaninC1(node);
   int node_fanin0_id = Abc_ObjId(node_fanin0);
-  int node_fanin1_id = Abc_ObjId(node_fanin1);  
-  int cnt = 4;
-  while(cnt--){
+  int node_fanin1_id = Abc_ObjId(node_fanin1);      
+
+  for(int i = 0; i < 4; i++){
     int status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);
-    if(status == 0){
-      //std::cout << "UNSAT" << std::endl;
+    if(status == l_False){      
       break;
     }
+    // status = l_True, find a care set solution --> remove from ODC
+    int v0 = sat_solver_var_value(pSat, node_fanin0_id) ^ fanin0_inv;
+    int v1 = sat_solver_var_value(pSat, node_fanin1_id) ^ fanin1_inv;            
+    care_set.insert(2*v0+v1);
 
-    // status = l_True, find a solution --> ODC
-    int iVar0_value = sat_solver_var_value(pSat, node_fanin0_id);
-    int iVar1_value = sat_solver_var_value(pSat, node_fanin1_id);
-    //std::cout << iVar0_value << " " << iVar1_value << std::endl;
-
-    odc_set.insert(2*iVar0_value+iVar1_value);
-    
-    // add constraint to avoid the same solution
-    // (y0 ^ iVar0_value  || y1 ^ iVar1_value)
-    // (iVar0_value,iVar1_value) == (0,0) (0,1) (1,0) (1,1)
-    // (1,1) --> not y0 or not y1
-    // (1,0) --> not y0 or y1
-    // (0,1) --> y0 or not y1
-    // (0,0) --> y0 or y1
     lit Lits[2];
-    if(iVar0_value == 1 && iVar1_value == 1){
-      Lits[0] = toLitCond(node_fanin0_id, 0);
-      Lits[1] = toLitCond(node_fanin1_id, 0);
-      //std::cout<<"not y0 or not y1"<<std::endl;
-    }else if(iVar0_value == 1 && iVar1_value == 0){
-      Lits[0] = toLitCond(node_fanin0_id, 0);
-      Lits[1] = toLitCond(node_fanin1_id, 1);
-      //std::cout<<"not y0 or y1"<<std::endl;
-    }else if(iVar0_value == 0 && iVar1_value == 1){
-      Lits[0] = toLitCond(node_fanin0_id, 1);
-      Lits[1] = toLitCond(node_fanin1_id, 0);
-      //std::cout<<"y0 or not y1"<<std::endl;
-    }else{
-      Lits[0] = toLitCond(node_fanin0_id, 1);
-      Lits[1] = toLitCond(node_fanin1_id, 1);
-      //std::cout<<"y0 or y1"<<std::endl;
-    }
-    Cid = sat_solver_addclause(pSat, Lits, Lits + 2);
-    //std::cout << "Cid: " << Cid << std::endl;        
+    Lits[0] = toLitCond(node_fanin0_id, v0 ^ fanin0_inv);
+    Lits[1] = toLitCond(node_fanin1_id, v1 ^ fanin1_inv);
+    Cid = sat_solver_addclause(pSat, Lits, Lits + 2);      
   }
 
-  return odc_set;  
+  return care_set;  
 }
 
 int Lsv_CommandComputeODC(Abc_Frame_t* pAbc, int argc, char** argv){
@@ -707,7 +526,7 @@ int Lsv_CommandComputeODC(Abc_Frame_t* pAbc, int argc, char** argv){
   int node_id = std::atoi(argv[1]);
 
   if(!pNtk){
-    Abc_Print(-1, "Empty network.\n");
+    std::cout<<"no odc\n";
     return 0; 
   }
 
@@ -715,26 +534,27 @@ int Lsv_CommandComputeODC(Abc_Frame_t* pAbc, int argc, char** argv){
   pObj = Abc_NtkObj(pNtk, node_id);
   bool isNode = Abc_ObjIsNode(pObj);
   if(!isNode){
-    Abc_Print(-1, "Not a node.\n");
+    std::cout<<"no odc\n";
     return 0; 
   }
 
-  std::set<int> odcs = Lsv_NtkComputeODC(pNtk,node_id);
-  //std::cout << "ODC finished\n";
-  std::set<int> sdcs = Lsv_NtkComputeSDC(pNtk,node_id);
-  //std::cout << "SDC finished\n";
+  std::set<int> care_set = Lsv_NtkComputeODC(pNtk,node_id);
+  std::set<int> odc_set({0,1,2,3});
+  for(int care : care_set){
+    odc_set.erase(care);
+  }  
+  std::set<int> sdcs = Lsv_NtkComputeSDC(pNtk,node_id);  
 
   for(int sdc : sdcs){
-    odcs.erase(sdc);
+    odc_set.erase(sdc);
   }
-  if(odcs.empty()){
+  if(odc_set.empty()){
     std::cout << "no odc\n";
   }else{
-    for(int odc : odcs){
-      // odc 0:00, 1:01, 2:10, 3:11
-      char c0 = (odc & 2) ? '1' : '0';
-      char c1 = (odc & 1) ? '1' : '0';
-      std::cout << c0 << c1 << " ";
+    for(int odc : odc_set){      
+      int c0 = odc >> 1;
+      int c1 = odc & 1; 
+      std::cout<<c0<<c1<<" ";
     }
     std::cout << std::endl;
   }
