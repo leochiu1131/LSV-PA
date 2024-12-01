@@ -116,14 +116,14 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
                 int assumptions[1] = {Abc_Var2Lit(y_array[0][0], v0==0)};
                 int result = sat_solver_solve(pSatSolver, assumptions, assumptions + 1, 0, 0, 0, 0);
                 if (result == l_False){
-                    Abc_Print(1, "%d\n", v0 != edge_array[0][0]);
+                    Abc_Print(1, "%d ", v0 != edge_array[0][0]);
                     SDC_flag = 1;
                 }
             } else if (nFanin == 2){
                 int assumptions[2] = {Abc_Var2Lit(y_array[0][0], v0==0), Abc_Var2Lit(y_array[0][1], v1==0)};
                 int result = sat_solver_solve(pSatSolver, assumptions, assumptions + 2, 0, 0, 0, 0);
                 if (result == l_False){
-                    Abc_Print(1, "%d%d\n", v0 != edge_array[0][0], v1 != edge_array[0][1]);
+                    Abc_Print(1, "%d%d ", v0 != edge_array[0][0], v1 != edge_array[0][1]);
                     SDC_flag = 1;
                 }
             sat_solver_delete(pSatSolver);
@@ -132,6 +132,8 @@ int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
     if (SDC_flag==0){
         Abc_Print(1, "no sdc\n");
+    } else {
+        Abc_Print(1, "\n");
     }
     Vec_PtrFree(vFanins);
     free(pattern);
@@ -320,19 +322,20 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
             Vec_PtrFree(vFanins_new);
         }
     }
-    //Abc_Print(1, "ODC\n");
     no_ODC_flag = 1;
     for (int i = 0; i < 4; i++){
         if ((Care_set[i][0] != -1) && (Care_set[i][0] != -1)){
-            Abc_Print(1, "%d%d\n",Care_set[i][0], Care_set[i][1]);
+            Abc_Print(1, "%d%d ",Care_set[i][0], Care_set[i][1]);
             no_ODC_flag = 0;
         } else if ((Care_set[i][0] != -1) && (Care_set[i][0] == -1)){
-            Abc_Print(1, "%d\n",Care_set[i][0]);
+            Abc_Print(1, "%d ",Care_set[i][0]);
             no_ODC_flag = 0;
         }
     }
     if (no_ODC_flag){
         Abc_Print(1, "no odc\n");
+    } else {
+        Abc_Print(1, "\n");
     }
     Vec_PtrFree( Cp_yArray);
     Vec_PtrFree(SAT_yArray);
