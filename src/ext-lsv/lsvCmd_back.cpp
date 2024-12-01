@@ -7,8 +7,6 @@
 #include<vector>
 #include<algorithm>
 #include<iostream>
-#include<cstdlib>
-#include<chrono>
 
 #include "sat/cnf/cnf.h"
  extern "C"{
@@ -20,14 +18,12 @@ using std::cout;
 using std::cerr;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
-static int Lsv_Debug(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandKFeasibleCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSdc(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandOdc(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
-  Cmd_CommandAdd(pAbc, "LSV", "lsv_debug", Lsv_Debug, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandKFeasibleCut, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSdc, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandOdc, 0);
@@ -41,58 +37,6 @@ struct PackageRegistrationManager {
   PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer); }
 } lsvPackageRegistrationManager;
 
-
-// =========================================
-// LSV debug
-// =========================================
-
-void Lsv_PrintNodeRange(Abc_Ntk_t* pNtk) {
-  int min_node_num = -1;
-  int max_node_num = -1;
-  Abc_Obj_t* pObj;
-  int i;
-  Abc_NtkForEachNode(pNtk, pObj, i) {
-    if (min_node_num == -1 || min_node_num > pObj->Id) {
-      min_node_num = pObj->Id;
-    }
-    if (max_node_num == -1 || max_node_num < pObj->Id) {
-      max_node_num = pObj->Id;
-    }
-  }
-  printf("node number range: %d ~ %d\n", min_node_num, max_node_num);
-
-}
-
-int Lsv_Debug(Abc_Frame_t* pAbc, int argc, char** argv) {
-    Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-    int c;
-    // int node_id;
-  
-    Extra_UtilGetoptReset();
-    while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
-        switch (c) {
-            case 'h':
-                goto usage;
-            default:
-                goto usage;
-        }
-    }
-    if (!pNtk) {
-        Abc_Print(-1, "Empty network.\n");
-        return 1;
-    }
-    
-    // start
-    Lsv_PrintNodeRange(pNtk);
-    // end
-    return 0;
-
-usage:
-    Abc_Print(-2, "usage: lsv_debug [-h]\n");
-    Abc_Print(-2, "\t        prints node number range of the non PI and PO nodes\n");
-    Abc_Print(-2, "\t-h    : print the command usage\n");
-    return 1;
-}
 
 // =========================================
 //           LSV PA2 Part1
@@ -111,7 +55,6 @@ int Lsv_CommandSdc(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
     int c;
     int node_id;
-
   
     Extra_UtilGetoptReset();
     while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
@@ -148,7 +91,9 @@ bool Lsv_CalSdc(Abc_Ntk_t* pNtk, int node_id, std::vector<std::pair<int, int> >&
         return true if there is sdc
         if there is sdc, push the sdc into the sdc_vec
     */
-       
+   
+    // perform random simulation and observe the values on fanin nodes y0, y1 of n
+    /*TODO*/
     // Create two cones of the two transistive fanins and push them into a vector
     Vec_Ptr_t *Fanin_ptr_vec = Vec_PtrAlloc(2);
     Abc_Obj_t *curr_node_obj = Abc_NtkObj(pNtk, node_id);
@@ -162,59 +107,6 @@ bool Lsv_CalSdc(Abc_Ntk_t* pNtk, int node_id, std::vector<std::pair<int, int> >&
     Aig_Man_t *pMan = Abc_NtkToDar(pNtk, 0, 0);
     Cnf_Dat_t *pCnf = Cnf_Derive(pMan, 2);
 
-    // perform random parallel simulation and observe the values on fanin nodes y0, y1 of n
-    // generate random pattern
-    int i_pat = 10;
-    int ci_num = Abc_NtkCiNum(pNtk);
-    int *pattern_rand = (int*)malloc(sizeof(int) * ci_num);
-    int *pValues;
-    std::set<std::pair<int, int> > value_set;
-    for (int i=0; i<i_pat; i++){
-        for (int j=0; j<ci_num; j++)
-            pattern_rand[j] = rand();
-
-        // debug
-        // printf("pattern_rand: ");
-        // for (int j=0; j<ci_num; j++)
-        //     printf("%d ", pattern_rand[j]);
-        // printf("\n");
-        // end debug
-
-        // simulation
-        pValues = Lsv_NtkVerifySimulatePattern(pNtk, pattern_rand);
-        // store the value occur in (y0, y1) in simulation
-        for (int j=0; j<sizeof(int)*8; j++){
-            unsigned int value_vec0 = pValues[0];
-            unsigned int value_vec1 = pValues[1];
-            // debug 
-            // printf("value_vec0: %d\n", value_vec0);
-            // printf("value_vec1: %d\n", value_vec1);
-            // printf("pValues[0]: %d\n", pValues[0]);
-            // printf("pValues[1]: %d\n", pValues[1]);
-            // end debug
-            int y0_val = (value_vec0 >> j) & 1;
-            int y1_val = (value_vec1 >> j) & 1;
-            if (Abc_ObjFaninC0(curr_node_obj))
-                y0_val = !y0_val;
-            if (Abc_ObjFaninC1(curr_node_obj))
-                y1_val = !y1_val;
-            std::pair<int, int> value_pair = std::make_pair(y0_val, y1_val);
-            value_set.insert(value_pair);
-            // debug 
-            // printf("y0_val: %d\n", y0_val);
-            // printf("y1_val: %d\n", y1_val);
-            // end debug
-        }
-    }
-
-    // debug
-    // printf("RAN_MAX %d\n", RAND_MAX);
-    // for (auto value : value_set){
-    //     printf("value_set: %d %d\n", value.first, value.second);
-    // }
-    //end debug
-
-    
     // Aig_ManShow(pMan, 0, NULL);
     
     // use sat solver to solve the cnf with given four assumptions
@@ -232,26 +124,13 @@ bool Lsv_CalSdc(Abc_Ntk_t* pNtk, int node_id, std::vector<std::pair<int, int> >&
     int Lits[2];
     int status;
     int y0, y1;
-    int actual_y0, actual_y1;
 
     for (int i=0; i<4; i++){
         y0 = i / 2;
         y1 = i % 2;
 
-        actual_y0 = (Abc_ObjFaninC0(curr_node_obj)) ? !y0 : y0;
-        actual_y1 = (Abc_ObjFaninC1(curr_node_obj)) ? !y1 : y1;
-
-        // debug
-        // printf("Abc_ObjFaninC0(curr_node_obj): %d\n", Abc_ObjFaninC0(curr_node_obj));
-        // printf("Abc_ObjFaninC1(curr_node_obj): %d\n", Abc_ObjFaninC1(curr_node_obj));
-        // end debug
-        
-        // check if the value is in the value_set
-        if (value_set.find(std::make_pair(actual_y0, actual_y1)) != value_set.end())
-            continue;
-
-        Lits[0] = Abc_Var2Lit(fanin_node_cnf_idx0, !y0);
-        Lits[1] = Abc_Var2Lit(fanin_node_cnf_idx1, !y1);
+        Lits[0] = Abc_Var2Lit(fanin_node_cnf_idx0, y0);
+        Lits[1] = Abc_Var2Lit(fanin_node_cnf_idx1, y1);
 
         pSat = (sat_solver*)Cnf_DataWriteIntoSolverInt(pSat, pCnf, 1, 0);
         sat_solver_addclause(pSat, Lits, Lits + 1);
@@ -259,10 +138,20 @@ bool Lsv_CalSdc(Abc_Ntk_t* pNtk, int node_id, std::vector<std::pair<int, int> >&
 
         status = sat_solver_solve(pSat, NULL, NULL, 0, 0, 0, 0);  
 
+        // // debug
+        // printf("status: %d\n", status);
+        // printf("y0: %d\n", y0);
+        // printf("y1: %d\n", y1);
+        // // end debug
+        
         if (status == l_False){
             // unsat ==> sdc
             is_sdc = true;
-            sdc_vec.push_back(std::make_pair(actual_y0, actual_y1));
+            if (Abc_ObjFaninC0(curr_node_obj))  
+                y0 = !y0;
+            if (Abc_ObjFaninC1(curr_node_obj))
+                y1 = !y1;
+            sdc_vec.push_back(std::make_pair(!y0, !y1));
         }
         
         sat_solver_restart(pSat);
@@ -277,13 +166,7 @@ void Lsv_PrintSdc(Abc_Ntk_t* pNtk, int node_id){
     // get a vector of sdc
     bool is_sdc;
     std::vector<std::pair<int, int> > sdc_vec;
-    // measure time
-    // auto start_time = std::chrono::high_resolution_clock::now();
     is_sdc = Lsv_CalSdc(pNtk, node_id, sdc_vec);
-    // auto end_time = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed = end_time - start_time;
-    // printf("Time: %f\n", elapsed.count());
-    // end measure
     
     // print the nodes
     if (is_sdc){
@@ -299,7 +182,6 @@ void Lsv_PrintSdc(Abc_Ntk_t* pNtk, int node_id){
 
 }
 
-// modify from Abc_NtkVerifySimulatePattern
 int * Lsv_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
 {
     Abc_Obj_t * pNode;
@@ -310,7 +192,12 @@ int * Lsv_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
         pNtk = Abc_NtkStrash(pNtk, 0, 0, 0);
         fStrashed = 1;
     }
-    
+/*
+    printf( "Counter example: " );
+    Abc_NtkForEachCi( pNtk, pNode, i )
+        printf( " %d", pModel[i] );
+    printf( "\n" );
+*/
     // increment the trav ID
     Abc_NtkIncrementTravId( pNtk );
     // set the CI values
@@ -321,10 +208,8 @@ int * Lsv_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
     Abc_NtkForEachNode( pNtk, pNode, i )
     {
         // to modify
-        bool fainin_c0 = Abc_ObjFaninC0(pNode);
-        bool fainin_c1 = Abc_ObjFaninC1(pNode);
-        Value0 = (fainin_c0) ? ~((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy) : ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
-        Value1 = (fainin_c1) ? ~((int)(ABC_PTRINT_T)Abc_ObjFanin1(pNode)->pCopy) : ((int)(ABC_PTRINT_T)Abc_ObjFanin1(pNode)->pCopy);
+        Value0 = ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy) ^ (int)Abc_ObjFaninC0(pNode);
+        Value1 = ((int)(ABC_PTRINT_T)Abc_ObjFanin1(pNode)->pCopy) ^ (int)Abc_ObjFaninC1(pNode);
         // end to modify
         pNode->pCopy = (Abc_Obj_t *)(ABC_PTRINT_T)(Value0 & Value1);
     }
@@ -332,16 +217,7 @@ int * Lsv_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
     pValues = ABC_ALLOC( int, Abc_NtkCoNum(pNtk) );
     Abc_NtkForEachCo( pNtk, pNode, i ){
         // to modify
-        bool fainin_c0 = Abc_ObjFaninC0(pNode);
-        pValues[i] = (fainin_c0) ? ~((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy) : ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
-
-        // debug
-        // printf("fainin_c0: %d\n", fainin_c0);
-        // printf("Abc_ObjFaninC0(pNode): %d\n", Abc_ObjFaninC0(pNode));
-        // printf("pValues[i]: %d\n", pValues[i]);
-        // printf("Abc_ObjFanin0(pNode)->pCopy: %d\n", (int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
-        // printf("~Abc_ObjFanin0(pNode)->pCopy: %d\n", ~(int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy);
-        // end debug
+        pValues[i] = ((int)(ABC_PTRINT_T)Abc_ObjFanin0(pNode)->pCopy) ^ (int)Abc_ObjFaninC0(pNode);
     }
     if ( fStrashed )
         Abc_NtkDelete( pNtk );
@@ -361,7 +237,6 @@ int Lsv_CommandOdc(Abc_Frame_t* pAbc, int argc, char** argv) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
     int c;
     int node_id;
-
   
     Extra_UtilGetoptReset();
     while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
@@ -399,13 +274,6 @@ bool Lsv_CalOdc(Abc_Ntk_t* pNtk, int node_id, std::vector<std::pair<int, int> >&
         note that odc should not contain the sdc
     */
     
-    // debug
-    // print the node name of the given node_id
-    // std::cerr << "node name: " << Abc_ObjName(Abc_NtkObj(pNtk, node_id)) << std::endl;
-    // std::cerr << "fanin0 name: " << Abc_ObjName(Abc_ObjFanin0(Abc_NtkObj(pNtk, node_id))) << std::endl;
-    // std::cerr << "fanin1 name: " << Abc_ObjName(Abc_ObjFanin1(Abc_NtkObj(pNtk, node_id))) << std::endl;
-    // end debug
-
     bool is_odc = false;
     bool fanin0_inv = Abc_ObjFaninC0(Abc_NtkObj(pNtk, node_id));
     bool fanin1_inv = Abc_ObjFaninC1(Abc_NtkObj(pNtk, node_id));
@@ -543,13 +411,7 @@ void Lsv_PrintOdc(Abc_Ntk_t* pNtk, int node_id){
     // get a vector of odc
     bool is_odc;
     std::vector<std::pair<int, int> > odc_vec;
-    // measure time
-    // auto start_time = std::chrono::high_resolution_clock::now();
     is_odc = Lsv_CalOdc(pNtk, node_id, odc_vec);
-    // auto end_time = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed = end_time - start_time;
-    // printf("elapsed time: %f\n", elapsed.count());
-    // end measure
 
     // print the nodes
     if (is_odc){
