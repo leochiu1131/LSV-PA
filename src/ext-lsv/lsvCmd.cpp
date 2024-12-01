@@ -184,6 +184,8 @@ usage:
 int Lsv_NtkSdc(Abc_Ntk_t* pNtk, int n, int print_or_not) {
   Abc_Obj_t* pObj;
   Abc_Ntk_t * pNtk2;
+  Aig_Man_t* pAig;
+  Aig_Obj_t* pObj_aig;
   sat_solver * pSat;
   Cnf_Dat_t * pCnf;
   
@@ -224,25 +226,27 @@ int Lsv_NtkSdc(Abc_Ntk_t* pNtk, int n, int print_or_not) {
 
   // Create CNF
   pSat = sat_solver_new();
-  pCnf = Cnf_Derive(Abc_NtkToDar(pNtk2, 0, 0), 2);
+  pAig = Abc_NtkToDar(pNtk2, 0, 0);
+  pCnf = Cnf_Derive(pAig, 2);
   // printf("%d vars and %d clauses in CNF\n", pCnf->nVars, pCnf->nClauses);
   // printf("\n");
 
   // Print Network node <-> CNF var (pCnf->pVarNums[pObj->ID])
   int out_CNF_var[2] = {-1, -1};
-  // printf("Node ID <-> CNF var\n");
-  // printf("-----------------------------\n");
+
+  Aig_ManForEachObj(pAig, pObj_aig, i){
+    if (Aig_ObjId(pObj_aig) == out_ID[0])
+      out_CNF_var[0] = pCnf->pVarNums[Aig_ObjId(pObj_aig)];
+    else if (Aig_ObjId(pObj_aig) == out_ID[1])
+      out_CNF_var[1] = pCnf->pVarNums[Aig_ObjId(pObj_aig)];
+  }
+
   Abc_NtkForEachObj(pNtk2, pObj, i) {
-    // printf("%d ", Abc_ObjId(pObj));
-    // printf("<-> %d\n", pCnf->pVarNums[Abc_ObjId(pObj)]);
     if (Abc_ObjId(pObj) == out_ID[0])
       out_CNF_var[0] = pCnf->pVarNums[Abc_ObjId(pObj)];
     else if (Abc_ObjId(pObj) == out_ID[1])
       out_CNF_var[1] = pCnf->pVarNums[Abc_ObjId(pObj)];
   }
-  // printf("-----------------------------\n");
-  // printf("PO CNF var: %d and %d\n", out_CNF_var[0], out_CNF_var[1]);
-  // printf("\n");
 
   // Print CNF
   // int *pBeg, *pEnd;
@@ -376,6 +380,8 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int n = 0) {
   // int count = 0;
   bool out_fanin_no_var = false;
   Abc_Obj_t* pObj;
+  Aig_Man_t* pAig;
+  Aig_Obj_t* pObj_aig;
   Abc_Ntk_t *pNtk1, *pNtk2, *pNtkMiter, *pNtkCone;
   Vec_Ptr_t * vOut;
   sat_solver * pSat;
@@ -437,7 +443,7 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int n = 0) {
       if (Abc_ObjId(pFanin) == n)
         Abc_ObjXorFaninC(pObj, j);
   }
-  Aig_ManDumpBlif(Abc_NtkToDar(pNtk2, 0, 0), "odc_Ntk2.blif", NULL, NULL);
+  // Aig_ManDumpBlif(Abc_NtkToDar(pNtk2, 0, 0), "odc_Ntk2.blif", NULL, NULL);
   // printf("pNtk2: \n");
   // print_Ntk_WL(pNtk2);
   // printf("\n");
@@ -468,16 +474,27 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int n = 0) {
   // CNF and SAT
   int in_CNF_var[2] = {-1, -1};
   pSat = sat_solver_new();
-  pCnf = Cnf_Derive(Abc_NtkToDar(pNtkCone, 0, 0), 3);
+  pAig = Abc_NtkToDar(pNtkCone, 0, 0);
+  pCnf = Cnf_Derive(pAig, 3);
   // print_CNF_WL(pNtkCone, pCnf);
 
-  Abc_NtkForEachPo(pNtkCone, pObj, i){
+  // Abc_NtkForEachPo(pNtkCone, pObj, i){
+  //   if (i == 2)
+  //     out_ID = Abc_ObjId(pObj);
+  //   else
+  //     in_ID[i] = Abc_ObjId(pObj);
+  // }
+  // printf("%d, %d, %d\n", in_ID[0], in_ID[1], out_ID);
+
+  Aig_ManForEachCo(pAig, pObj_aig, i){
+    // printf("i: %d, ID = %d\n", i, Aig_ObjId(pObj_aig));
     if (i == 2)
-      out_ID = Abc_ObjId(pObj);
+      out_ID = Aig_ObjId(pObj_aig);
     else
-      in_ID[i] = Abc_ObjId(pObj);
+      in_ID[i] = Aig_ObjId(pObj_aig);
   }
   // printf("%d, %d, %d\n", in_ID[0], in_ID[1], out_ID);
+
   int out_CNF_var = pCnf->pVarNums[out_ID];
   if (out_CNF_var < 0){ // doesn't exist
     out_CNF_var = pCnf->pVarNums[out_fanin_ID];
