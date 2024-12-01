@@ -6,7 +6,7 @@
 #include <vector>
 #include <set>
 #include <map>
-#include <iostream>
+#include <algorithm>
 
 extern "C" {
     Aig_Man_t* Abc_NtkToDar(Abc_Ntk_t* pNtk, int fExors, int fRegisters);
@@ -467,20 +467,28 @@ int Lsv_CommandSdc(Abc_Frame_t* pAbc, int argc, char** argv) {
     }
     
     std::vector<std::pair<int, int>> sdcPatterns;
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            if (!isPatternPossible(pNode, i, j)) {
-                sdcPatterns.push_back({i, j});
-            }
+    // Check all possible patterns in order
+    std::vector<std::pair<int, int>> allPatterns = {{0,0}, {0,1}, {1,0}, {1,1}};
+    
+    for (const auto& pattern : allPatterns) {
+        if (!isPatternPossible(pNode, pattern.first, pattern.second)) {
+            sdcPatterns.push_back(pattern);
         }
     }
     
     if (sdcPatterns.empty()) {
         Abc_Print(1, "no sdc\n");
     } else {
+        // Print patterns with space between them
+        bool first = true;
         for (const auto& pattern : sdcPatterns) {
-            Abc_Print(1, "%d%d\n", pattern.first, pattern.second);
+            if (!first) {
+                Abc_Print(1, " ");
+            }
+            Abc_Print(1, "%d%d", pattern.first, pattern.second);
+            first = false;
         }
+        Abc_Print(1, "\n");
     }
     
     return 0;
@@ -528,13 +536,26 @@ int Lsv_CommandOdc(Abc_Frame_t* pAbc, int argc, char** argv) {
         return 1;
     }
     
+    // Sort patterns according to binary order (00, 01, 10, 11)
+    std::sort(result.odcPatterns.begin(), result.odcPatterns.end(), 
+        [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+            return (a.first * 2 + a.second) < (b.first * 2 + b.second);
+        });
+    
     // Output results
     if (result.odcPatterns.empty()) {
         Abc_Print(1, "no odc\n");
     } else {
+        // Print patterns with space between them
+        bool first = true;
         for (const auto& pattern : result.odcPatterns) {
-            Abc_Print(1, "%d%d\n", pattern.first, pattern.second);
+            if (!first) {
+                Abc_Print(1, " ");
+            }
+            Abc_Print(1, "%d%d", pattern.first, pattern.second);
+            first = false;
         }
+        Abc_Print(1, "\n");
     }
     
     return 0;
