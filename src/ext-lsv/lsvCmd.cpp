@@ -4,6 +4,7 @@
 
 #include "./lsvCut.h"
 
+
 #include "sat/cnf/cnf.h"
 extern "C"{
  Aig_Man_t* Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
@@ -14,11 +15,14 @@ static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSDC(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv);
 
+
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCut, 0);
+
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSDC, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandODC, 0);
+
 }
 
 void destroy(Abc_Frame_t* pAbc) {}
@@ -72,6 +76,7 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
+
 
 int * My_Abc_NtkVerifySimulatePattern( Abc_Ntk_t * pNtk, int * pModel )
 {
@@ -507,6 +512,7 @@ int Lsv_CommandODC(Abc_Frame_t* pAbc, int argc, char** argv) {
   return 0;
 }
 
+
 int find_index(int* id_to_index, int array_size, int node_id) {
   int index = -1;
   for(int i=array_size - 1; i>=0; i--){
@@ -549,7 +555,9 @@ int Lsv_find_cut(Abc_Obj_t* pObj, const int k_feasible, Cut_t*** k_cut, int& kcu
   Abc_Obj_t* pFanin;
   int i;
   Abc_ObjForEachFanin(pObj, pFanin, i) {
+
     // int faninID = (int)Abc_ObjId(pFanin);
+
     int fanin_index = Lsv_find_cut(pFanin, k_feasible, k_cut, kcut_size, id_to_index, num_cut_per_obj);
     // printf("faninID = %d, fanin_index = %d\n", faninID, fanin_index);
     // printf("num_cut_per_obj[fanin_index] = %d\n", num_cut_per_obj[fanin_index]);
