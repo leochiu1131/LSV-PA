@@ -1299,7 +1299,7 @@ extern ABC_DLL Gia_Man_t *Abc_SopSynthesizeOne(char *pSop, int fClp);
 extern ABC_DLL int *Abc_NtkVerifyGetCleanModel(Abc_Ntk_t *pNtk, int nFrames);
 extern ABC_DLL int *Abc_NtkVerifySimulatePattern(Abc_Ntk_t *pNtk, int *pModel);
 
-extern ABC_DLL word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel);
+// extern ABC_DLL word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel);
 extern ABC_DLL int Abc_NtkIsTrueCex(Abc_Ntk_t *pNtk, Abc_Cex_t *pCex);
 extern ABC_DLL int Abc_NtkIsValidCex(Abc_Ntk_t *pNtk, Abc_Cex_t *pCex);
 

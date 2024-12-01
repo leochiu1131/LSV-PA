@@ -11,6 +11,7 @@
 #include "algorithm"
 #include "sat/cnf/cnf.h"
 #include "stdint.h"
+ABC_NAMESPACE_IMPL_START
 extern "C"
 {
   Aig_Man_t *Abc_NtkToDar(Abc_Ntk_t *pNtk, int fExors, int fRegisters);
@@ -257,13 +258,47 @@ usage:
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
-/*
-Abc_NtkForEachCi
-    Abc_NtkForEachCO
-        abc_objfanin0 // obj pointer
-    Abc_ObjFaninId0   // obj id
-*/
+word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel)
+{
+  Abc_Obj_t *pNode;
+  word *pValues, Value0, Value1;
+  int i;
+  int fStrashed = 0;
 
+  if (!Abc_NtkIsStrash(pNtk))
+  {
+    pNtk = Abc_NtkStrash(pNtk, 0, 0, 0);
+    fStrashed = 1;
+  }
+
+  // Increment the trav ID
+  Abc_NtkIncrementTravId(pNtk);
+
+  // Set the CI values
+  Abc_AigConst1(pNtk)->pCopy = (Abc_Obj_t *)0xFFFFFFFFFFFFFFFFULL; // Assuming constant 1 is all 1s
+  Abc_NtkForEachCi(pNtk, pNode, i)
+      pNode->pCopy = (Abc_Obj_t *)pModel[i];
+
+  // Simulate in the topological order
+  Abc_NtkForEachNode(pNtk, pNode, i)
+  {
+    Value0 = ((word)Abc_ObjFanin0(pNode)->pCopy) ^ ((word)Abc_ObjFaninC0(pNode) ? 0xFFFFFFFFFFFFFFFFULL : 0x0);
+    Value1 = ((word)Abc_ObjFanin1(pNode)->pCopy) ^ ((word)Abc_ObjFaninC1(pNode) ? 0xFFFFFFFFFFFFFFFFULL : 0x0);
+    pNode->pCopy = (Abc_Obj_t *)(Value0 & Value1);
+  }
+
+  // Fill the output values
+  pValues = ABC_ALLOC(word, Abc_NtkCoNum(pNtk));
+  Abc_NtkForEachCo(pNtk, pNode, i)
+  {
+    pValues[i] = ((word)Abc_ObjFanin0(pNode)->pCopy) ^ ((word)Abc_ObjFaninC0(pNode) ? 0xFFFFFFFFFFFFFFFFULL : 0x0);
+  }
+
+  if (fStrashed)
+    Abc_NtkDelete(pNtk);
+
+  return pValues;
+}
 void PrintCNF(Cnf_Dat_t *pCnf)
 {
   for (int num = 0; num < pCnf->nClauses; num++)
@@ -388,20 +423,6 @@ vector<pair<int, int>> Lsv_Ntk_PrintSDC(Abc_Ntk_t *pNtk, int n)
   return sdc;
 }
 
-void AddDummyConstraints(Abc_Ntk_t *pNtk, Abc_Obj_t *pTarget)
-{
-  Abc_Obj_t *pFanin0 = Abc_ObjFanin0(pTarget);
-  Abc_Obj_t *pFanin1 = Abc_ObjFanin1(pTarget);
-
-  // Create a new dummy node that depends on the fanins
-  Abc_Obj_t *pDummyNode = Abc_NtkCreateNode(pNtk);
-  Abc_ObjAddFanin(pDummyNode, pFanin0);
-  Abc_ObjAddFanin(pDummyNode, pFanin1);
-
-  // Create a new dummy output
-  Abc_Obj_t *pDummyOutput = Abc_NtkCreatePo(pNtk);
-  Abc_ObjAddFanin(pDummyOutput, pDummyNode);
-}
 void Lsv_Ntk_PrintODC(Abc_Ntk_t *pNtk, int n)
 {
   Abc_Obj_t *pTarget, *pTarget_o;

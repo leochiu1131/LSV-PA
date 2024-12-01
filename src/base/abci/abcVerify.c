@@ -729,7 +729,7 @@ int *Abc_NtkVerifySimulatePattern(Abc_Ntk_t *pNtk, int *pModel)
     return pValues;
 }
 
-word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel)
+/*word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel)
 {
     Abc_Obj_t *pNode;
     word *pValues, Value0, Value1;
@@ -769,7 +769,7 @@ word *Abc_NtkVerifySimulatePatternParallel(Abc_Ntk_t *pNtk, word *pModel)
         Abc_NtkDelete(pNtk);
 
     return pValues;
-}
+}*/
 
 /**Function*************************************************************
 
