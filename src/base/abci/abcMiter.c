@@ -1409,4 +1409,3 @@ Abc_Ntk_t * Abc_NtkSpecialMiter( Abc_Ntk_t * pNtk, Vec_Ptr_t * vNodes )
 
 
 ABC_NAMESPACE_IMPL_END
-
