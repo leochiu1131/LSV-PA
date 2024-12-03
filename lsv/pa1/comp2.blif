@@ -1,0 +1,14 @@
+.model comp
+.inputs x0 x1
+.outputs y0 y1
+
+.names x0 x1 y0
+00 0
+01 0
+10 0
+
+.names x0 x1 y1
+00 0
+11 0
+
+.end
