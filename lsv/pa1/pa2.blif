@@ -1,0 +1,21 @@
+.model desired_network
+.inputs x0 x1
+.outputs y0
+.names x0 x1 n4
+0- 1
+-0 1
+.names x0 x1 n5
+1- 1
+-1 1
+.names n4 n5 n6
+0- 1
+-0 1
+.names n4 n5 n7
+1- 1
+-0 1
+.names n6 n7 n8
+0- 1
+-1 1
+.names n8 y0
+0 1
+.end
