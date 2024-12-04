@@ -4,27 +4,19 @@
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 
-void init(Abc_Frame_t* pAbc) {
+void init_print_nodes(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
 }
 
-void destroy(Abc_Frame_t* pAbc) {}
+void destroy_print_nodes(Abc_Frame_t* pAbc) {}
 
-Abc_FrameInitializer_t frame_initializer = {init, destroy};
+Abc_FrameInitializer_t frame_initializer_print_nodes = {init_print_nodes, destroy_print_nodes};
 
 struct PackageRegistrationManager {
-  PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer); }
-} lsvPackageRegistrationManager;
+  PackageRegistrationManager() { Abc_FrameAddInitializer(&frame_initializer_print_nodes); }
+} lsvPackageRegistrationManager_print_nodes;
 
 void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
-
-
-
-
-
-
-
-  
   Abc_Obj_t* pObj;
   int i;
   Abc_NtkForEachNode(pNtk, pObj, i) {
@@ -39,16 +31,6 @@ void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
       printf("The SOP of this node:\n%s", (char*)pObj->pData);
     }
   }
-
-
-
-
-
-
-
-
-
-
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {

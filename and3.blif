@@ -1,0 +1,9 @@
+# Benchmark "and3" written by ABC on Fri Nov  8 23:43:22 2024
+.model and3
+.inputs in1[0] in1[1] in1[2]
+.outputs o
+.names in1[0] in1[1] new_n5
+11 1
+.names in1[2] new_n5 o
+11 1
+.end

@@ -1,0 +1,7 @@
+.model and
+.inputs a b 
+.outputs out
+
+.names a b out
+11 1
+.end
