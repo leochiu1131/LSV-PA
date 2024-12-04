@@ -1,0 +1,24 @@
+read lsv/pa1/benchmarks/div.blif
+strash
+lsv_sdc 2000
+lsv_odc 2000
+lsv_sdc 2010
+lsv_odc 2010
+lsv_sdc 2020
+lsv_odc 2020
+lsv_sdc 2030
+lsv_odc 2030
+lsv_sdc 2040
+lsv_odc 2040
+lsv_sdc 2050
+lsv_odc 2050
+lsv_sdc 2060
+lsv_odc 2060
+lsv_sdc 2070
+lsv_odc 2070
+lsv_sdc 2080
+lsv_odc 2080
+lsv_sdc 2090
+lsv_odc 2090
+lsv_sdc 2100
+lsv_odc 2100

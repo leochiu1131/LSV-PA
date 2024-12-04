@@ -1,0 +1,166 @@
+.model 4bit_multiplier
+.inputs a3 a2 a1 a0 b3 b2 b1 b0
+.outputs p7 p6 p5 p4 p3 p2 p1 p0
+
+# Initial product p0 (least significant bit)
+.names a0 b0 p0
+11 1
+
+# Partial products generation
+.names a1 b0 pp10
+11 1
+
+.names a0 b1 pp01
+11 1
+
+.names a2 b0 pp20
+11 1
+
+.names a1 b1 pp11
+11 1
+
+.names a0 b2 pp02
+11 1
+
+.names a3 b0 pp30
+11 1
+
+.names a2 b1 pp21
+11 1
+
+.names a1 b2 pp12
+11 1
+
+.names a0 b3 pp03
+11 1
+
+.names a3 b1 pp31
+11 1
+
+.names a2 b2 pp22
+11 1
+
+.names a1 b3 pp13
+11 1
+
+.names a3 b2 pp32
+11 1
+
+.names a2 b3 pp23
+11 1
+
+.names a3 b3 pp33
+11 1
+
+# First stage adders
+.names pp10 pp01 s11
+10 1
+01 1
+
+.names pp10 pp01 c11
+11 1
+
+.names pp20 pp11 s21
+10 1
+01 1
+
+.names pp20 pp11 c21
+11 1
+
+.names pp30 pp21 s31
+10 1
+01 1
+
+.names pp30 pp21 c31
+11 1
+
+# Second stage adders
+.names s21 pp02 s22
+10 1
+01 1
+
+.names s21 pp02 c22
+11 1
+
+.names s31 pp12 s32
+10 1
+01 1
+
+.names s31 pp12 c32
+11 1
+
+.names pp31 pp22 s41
+10 1
+01 1
+
+.names pp31 pp22 c41
+11 1
+
+# Output assignments
+.names s11 p1
+1 1
+
+.names s22 c11 p2_temp
+10 1
+01 1
+
+.names s22 c11 c2
+11 1
+
+.names p2_temp p2
+1 1
+
+.names s32 c22 c2 p3_temp
+100 1
+010 1
+001 1
+
+.names s32 c22 c2 c3
+11- 1
+1-1 1
+-11 1
+
+.names p3_temp p3
+1 1
+
+.names s41 c32 c3 p4_temp
+100 1
+010 1
+001 1
+
+.names s41 c32 c3 c4
+11- 1
+1-1 1
+-11 1
+
+.names p4_temp p4
+1 1
+
+.names pp32 c41 c4 p5_temp
+100 1
+010 1
+001 1
+
+.names pp32 c41 c4 c5
+11- 1
+1-1 1
+-11 1
+
+.names p5_temp p5
+1 1
+
+.names pp23 c5 p6_temp
+10 1
+01 1
+
+.names pp23 c5 c6
+11 1
+
+.names p6_temp p6
+1 1
+
+.names pp33 c6 p7
+10 1
+01 1
+
+.end
