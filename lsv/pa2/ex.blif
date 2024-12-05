@@ -1,0 +1,29 @@
+.model aig_example
+.inputs x0 x1
+.outputs y0
+
+# Node 4: AND gate (x0 AND x1)
+.names x0 x1 4
+11 1
+
+# Node 5: AND gate (inverted inputs: NOT x0 AND NOT x1)
+.names x0 x1 5
+00 1
+
+# Node 6: AND gate (4 AND NOT 5)
+.names 4 5 6
+00 1
+
+# Node 7: AND gate (NOT 4 AND 5)
+.names 4 5 7
+10 1
+
+# Node 8: AND gate (6 AND 7)
+.names 6 7 8
+01 1
+
+# Output y0: driven by node 8
+.names 8 y0
+1 1
+
+.end
