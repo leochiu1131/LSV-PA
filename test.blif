@@ -1,0 +1,16 @@
+.model A_Bad_AIG
+.inputs x0 x1 x2 
+.outputs y0
+.names x0 x1 t0
+01 1
+.names x0 x1 t1
+10 1
+.names x1 x2 t2
+11 1
+.names t0 t1 t3
+00 1
+.names t1 t2 t4
+10 1
+.names t3 t4 y0
+00 1
+.end
