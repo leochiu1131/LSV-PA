@@ -1,4 +1,4 @@
-name: Build Posix CMake
+mkname: Build Posix CMake
 
 on:
   push:
