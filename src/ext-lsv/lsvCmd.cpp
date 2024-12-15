@@ -33,7 +33,7 @@ static int Lsv_CommandSdc(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandOdc(Abc_Frame_t* pAbc, int argc, char** argv);
 
 void Lsv_NtkSdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim );
-void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim );
+int Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim );
 
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
@@ -164,46 +164,56 @@ int Abc_NtkMyAppend( Abc_Ntk_t * pNtk1, Abc_Ntk_t * pNtk2, int fAddPos )
     return 1;
 }
 
-void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk) {
+void Lsv_NtkPrintNodes(Abc_Ntk_t* pNtk, int fSkip ) {
   Abc_Obj_t* pObj;
   int i;
-//   Abc_NtkForEachPo(pNtk, pObj, i) {
 
-//     printf("Object Id = %d, name = %s\n", Abc_ObjId(pObj), Abc_ObjName(pObj));
-//     Abc_Obj_t* pFanin;
-//     int j;
-//     Abc_ObjForEachFanin(pObj, pFanin, j) {
-//       printf("  Fanin-%d: Id = %d, name = %s\n", j, Abc_ObjId(pFanin),
-//              Abc_ObjName(pFanin));
-//     }
-//     if (Abc_NtkHasSop(pNtk)) {
-//       printf("The SOP of this node:\n%s", (char*)pObj->pData);
-//     }
-//   }
-
-//   Abc_NtkForEachNodeReverse(pNtk, pObj, i)
-  Abc_NtkForEachNode(pNtk, pObj, i)
+  if ( !fSkip )
   {
+    Abc_NtkForEachNode(pNtk, pObj, i)
+    {
+        if ( Abc_ObjFaninNum(pObj) < 2 ) continue;
 
+        int pat [4];
+        printf("lsv_sdc %d\n", Abc_ObjId(pObj));
+        Lsv_NtkSdc(pNtk, i, pat, 0, 1);
+
+        if ( pat[0] && pat[1] && pat[2] && pat[3] ) 
+            printf("no sdc\n", Abc_ObjId(pObj));
+        else 
+        {
+            for ( int j = 0; j < 4; j++ )
+            {
+                if ( !pat[j] ) printf("%d%d\n", j >> 1, j % 1 );
+            }
+        }
+        fflush(stdout);
+
+    }
+  }
+
+  Abc_NtkForEachNodeReverse(pNtk, pObj, i)
+  {
     if ( Abc_ObjFaninNum(pObj) < 2 ) continue;
 
     int pat [4];
-    printf("Solving sdc for object Id %d\n", Abc_ObjId(pObj));
-    Lsv_NtkSdc(pNtk, i, pat, 0, 0);
+    Lsv_NtkSdc(pNtk, i, pat, 0, 1);
 
-    if ( pat[0] && pat[1] && pat[2] && pat[3] ) 
-        printf("  Object Id %d has no sdc\n", Abc_ObjId(pObj));
-    else 
-        printf("  Object Id %d has sdc\n", Abc_ObjId(pObj));
 
-    printf("Solving odc for object Id %d\n", Abc_ObjId(pObj));
-    Lsv_NtkOdc(pNtk, i, pat, 0, 0);
-
-    if ( !pat[0] && !pat[1] && !pat[2] && !pat[3] ) 
-        printf("  Object Id %d has no odc\n", Abc_ObjId(pObj));
-    else 
-        printf("  Object Id %d has odc\n", Abc_ObjId(pObj));
-
+    if ( !Lsv_NtkOdc(pNtk, i, pat, 0, 1) )
+    {
+        printf("lsv_odc %d\n", Abc_ObjId(pObj));
+        if ( !pat[0] && !pat[1] && !pat[2] && !pat[3] ) 
+            printf("no odc\n", Abc_ObjId(pObj));
+        else 
+        {
+            for ( int j = 0; j < 4; j++ )
+            {
+                if ( pat[j] ) printf("%d%d\n", j >> 1, j % 1 );
+            }
+        }
+        fflush(stdout);
+    }
   }
 
 }
@@ -387,7 +397,7 @@ void Lsv_NtkSdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim )
 }
 
 
-void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim ) 
+int Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim ) 
 {
 
     Abc_Obj_t* pObj;
@@ -417,7 +427,7 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim )
     strcpy(name0, Abc_ObjName(Abc_NtkPo(pCone, 0)));
     strcpy(name1, Abc_ObjName(Abc_NtkPo(pCone, 1)));
 
-    Abc_NtkForEachPo(pCone, pObj, i) printf("pcone %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
+    // Abc_NtkForEachPo(pCone, pObj, i) printf("pcone %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
 
     if ( Abc_ObjFaninC0(pTarget) ) Abc_ObjXorFaninC( Abc_NtkPo(pCone, 0), 0);
     if ( Abc_ObjFaninC1(pTarget) ) Abc_ObjXorFaninC( Abc_NtkPo(pCone, 1), 0);
@@ -428,20 +438,24 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim )
 
     if ( strcmp(name0, Abc_ObjName(Abc_NtkPo(pCone, 0))) != 0 )
     {
+        if ( fVerbose )
+        {
+            printf("[warning] fanin order changed.\n");
+        }
         Abc_NtkDelete(pNtk2);
         Abc_NtkDelete(pMiter);
         Abc_NtkDelete(pCone);
-        return;
+        return 1;
     }
 
-    Abc_NtkForEachPo(pMiter, pObj, i)
-    {
-        printf("pMiter %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
-    }
-    Abc_NtkForEachPo(pCone, pObj, i)
-    {
-        printf("pcone %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
-    }
+    // Abc_NtkForEachPo(pMiter, pObj, i)
+    // {
+    //     printf("pMiter %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
+    // }
+    // Abc_NtkForEachPo(pCone, pObj, i)
+    // {
+    //     printf("pcone %s %d\n", Abc_ObjName(pObj),  Abc_ObjFaninC0(Abc_ObjFanin0(pObj)));
+    // }
 
     int nPatLeft = 0;
     // use simlation to locate some cares
@@ -548,15 +562,19 @@ void Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim )
     Abc_NtkDelete(pMiter);
     Abc_NtkDelete(pCone);
 
-    return;
+    return 0;
 }
 
 int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
   int c;
+  int fSkip = 0;
   Extra_UtilGetoptReset();
-  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+  while ((c = Extra_UtilGetopt(argc, argv, "hs")) != EOF) {
     switch (c) {
+      case 's':
+        fSkip = 1;
+        break;
       case 'h':
         goto usage;
       default:
@@ -568,7 +586,7 @@ int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv) {
     return 1;
   }
 
-  Lsv_NtkPrintNodes(pNtk);
+  Lsv_NtkPrintNodes(pNtk, fSkip);
   return 0;
 
 usage:
