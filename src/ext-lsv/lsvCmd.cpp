@@ -29,6 +29,7 @@ using namespace std;
 
 static int Lsv_CommandPrintNodes(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandPrintCut(Abc_Frame_t* pAbc, int argc, char** argv);
+static int Lsv_CommandPrintMoCut(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandSdc(Abc_Frame_t* pAbc, int argc, char** argv);
 static int Lsv_CommandOdc(Abc_Frame_t* pAbc, int argc, char** argv);
 
@@ -38,6 +39,7 @@ int Lsv_NtkOdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim );
 void init(Abc_Frame_t* pAbc) {
   Cmd_CommandAdd(pAbc, "LSV", "lsv_print_nodes", Lsv_CommandPrintNodes, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_printcut", Lsv_CommandPrintCut, 0);
+  Cmd_CommandAdd(pAbc, "LSV", "lsv_printmocut", Lsv_CommandPrintMoCut, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_sdc", Lsv_CommandSdc, 0);
   Cmd_CommandAdd(pAbc, "LSV", "lsv_odc", Lsv_CommandOdc, 0);
 }
@@ -300,6 +302,74 @@ void Lsv_NtkPrintCuts(Abc_Ntk_t* pNtk, int k) {
     }
 }
 
+
+void Lsv_NtkPrintMoCuts(Abc_Ntk_t* pNtk, int k, int l) {
+
+    Abc_Obj_t * pObj;
+    int i, id0, id1;
+    bool insert;
+
+    vector<set<set<int> > > vCuts;
+    vector<set<int> > vRemove;
+    vCuts.resize(Abc_NtkObjNum(pNtk));
+
+    Abc_NtkForEachObj(pNtk, pObj, i)
+    {
+        if ( Abc_ObjId(pObj) == 0 ) continue; 
+        vCuts[i].insert({i});
+        if ( Abc_ObjFaninNum(pObj) < 2 ) continue; 
+
+        id0 = Abc_ObjFaninId0(pObj);
+        id1 = Abc_ObjFaninId1(pObj);
+
+        for( auto &cut0 : vCuts[id0] )
+        {
+            for( auto &cut1 : vCuts[id1] )
+            {
+                set<int> tmp;
+                for ( auto id : cut0 ) tmp.insert(id);
+                for ( auto id : cut1 ) tmp.insert(id);
+
+                if ( tmp.size() <= k ) 
+                {
+                    if ( vCuts[i].find(tmp) != vCuts[i].end() ) continue;
+                    insert = true;
+                    for( auto &cut : vCuts[i] )
+                    {
+                        if ( cut.size() < tmp.size() )
+                        {
+                            if ( insert && includes(tmp.begin(), tmp.end(), cut.begin(), cut.end()) )
+                                insert = false;
+                        }
+                        else if ( cut.size() > tmp.size() )
+                        {
+                            if ( includes(cut.begin(), cut.end(), tmp.begin(), tmp.end()) )
+                            {
+                                assert( insert == true );
+                                vRemove.push_back(cut);
+                            }
+                        }
+                    }
+                    for ( auto &cut : vRemove ) vCuts[i].erase(cut);
+                    vRemove.clear();
+
+                    if ( insert ) vCuts[i].insert(tmp);
+                }
+            }
+        }
+    }
+    Abc_NtkForEachCo(pNtk, pObj, i)
+    {
+        id0 = Abc_ObjId(pObj);
+        vCuts[id0] = vCuts[Abc_ObjFaninId0(pObj)];
+        vCuts[id0].insert({id0});
+    }
+    Abc_NtkForEachObj(pNtk, pObj, i)
+    {
+        if ( i == 0 ) continue;
+        printCuts( i, vCuts[i] );
+    }
+}
 
 void Lsv_NtkSdc(Abc_Ntk_t* pNtk, int id, int* pat, int fVerbose, int fSim ) 
 {
@@ -620,6 +690,39 @@ usage:
   Abc_Print(-2, "usage: lsv_printcut [-h] <k>\n");
   Abc_Print(-2, "\t        prints the nodes in the network\n");
   Abc_Print(-2, "\t<k>   : k-feasible cut\n");
+  Abc_Print(-2, "\t-h    : print the command usage\n");
+  return 1;
+}
+
+int Lsv_CommandPrintMoCut(Abc_Frame_t* pAbc, int argc, char** argv) {
+  Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
+  int c, k;
+  Extra_UtilGetoptReset();
+  while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
+    switch (c) {
+      case 'h':
+        goto usage;
+      default:
+        goto usage;
+    }
+  }
+  if (!pNtk) {
+    Abc_Print(-1, "Empty network.\n");
+    return 1;
+  }
+  if (argc <= globalUtilOptind+1) {
+        goto usage;
+  }
+  k = atoi(argv[globalUtilOptind]);
+  l = atoi(argv[globalUtilOptind+1]);
+  Lsv_NtkPrintMoCuts(pNtk, k, l);
+  return 0;
+
+usage:
+  Abc_Print(-2, "usage: lsv_printmocut [-h] <k> <l>\n");
+  Abc_Print(-2, "\t        prints the nodes in the network\n");
+  Abc_Print(-2, "\t<k>   : number of inputs\n");
+  Abc_Print(-2, "\t<l>   : number ouf outputs\n");
   Abc_Print(-2, "\t-h    : print the command usage\n");
   return 1;
 }
