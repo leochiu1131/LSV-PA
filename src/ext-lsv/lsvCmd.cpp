@@ -14,6 +14,7 @@
 
 #include <cstring>
 #include <set>
+#include <map>
 #include <vector>
 #include <iostream>
 #include <algorithm>
@@ -358,16 +359,38 @@ void Lsv_NtkPrintMoCuts(Abc_Ntk_t* pNtk, int k, int l) {
             }
         }
     }
-    Abc_NtkForEachCo(pNtk, pObj, i)
+
+    std::map<std::set<int>, std::vector<int> > cut_to_roots;
+    for ( int rid = 0; rid < (int)vCuts.size(); ++rid )
     {
-        id0 = Abc_ObjId(pObj);
-        vCuts[id0] = vCuts[Abc_ObjFaninId0(pObj)];
-        vCuts[id0].insert({id0});
+        for ( const auto &cut : vCuts[rid] )
+        {
+            auto &vec = cut_to_roots[cut];
+            // 避免重複加入相同 root id（理論上不會，但保險）
+            if (vec.empty() || vec.back() != rid) vec.push_back(rid);
+        }
     }
-    Abc_NtkForEachObj(pNtk, pObj, i)
+    for ( const auto &kv : cut_to_roots )
     {
-        if ( i == 0 ) continue;
-        printCuts( i, vCuts[i] );
+        const auto &cut = kv.first;
+        const auto &roots = kv.second;
+
+        if ((int)roots.size() >= l)
+        {
+            // 印 cut ids
+            for (int x : cut)
+                printf("%d ", x);
+
+            // 冒號
+            printf(": ");
+
+            // 印 root node ids
+            for (int r : roots)
+                printf("%d ", r);
+
+            printf("\n");
+
+        }
     }
 }
 
@@ -696,7 +719,7 @@ usage:
 
 int Lsv_CommandPrintMoCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-  int c, k;
+  int c, k, l;
   Extra_UtilGetoptReset();
   while ((c = Extra_UtilGetopt(argc, argv, "h")) != EOF) {
     switch (c) {
@@ -716,6 +739,7 @@ int Lsv_CommandPrintMoCut(Abc_Frame_t* pAbc, int argc, char** argv) {
   k = atoi(argv[globalUtilOptind]);
   l = atoi(argv[globalUtilOptind+1]);
   Lsv_NtkPrintMoCuts(pNtk, k, l);
+
   return 0;
 
 usage:
